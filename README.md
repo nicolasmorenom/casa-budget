@@ -79,6 +79,16 @@ never hits SimpleFIN's CORS wall or has to construct Basic Auth headers:
   access URL (which embeds the Basic Auth credentials)
 - `simplefin-sync` — fetches accounts + transactions using that access URL
 
+**On history depth:** SimpleFIN Bridge caps any single request to a 90-day
+window, and if you don't ask for a range at all it falls back to a short
+recent-activity default. `simplefin-sync` handles this by chunking a
+requested range into consecutive 90-day windows server-side (capped at 8
+chunks, ~2 years, to stay well within Netlify's function timeout and the
+Bridge's 24-requests/day quota) — the Settings page has an "Import" dropdown
+(30 days up to 2 years) so you control how far back a sync reaches. Re-syncing
+never duplicates transactions (dedup is by SimpleFIN transaction id), so it's
+always safe to re-run a longer range later.
+
 The access URL is stored in Firestore at
 `households/{id}/simplefin/connection`, readable/writable only by members of
 that household under the current rules. That's a reasonable trade-off for a

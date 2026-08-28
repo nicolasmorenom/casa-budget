@@ -12,6 +12,14 @@ import {
   upsertTransactionsFromSimpleFin,
 } from '../lib/firestore'
 
+const HISTORY_OPTIONS = [
+  { label: '30 days', days: 30 },
+  { label: '90 days', days: 90 },
+  { label: '6 months', days: 182 },
+  { label: '1 year', days: 365 },
+  { label: '2 years', days: 730 },
+]
+
 export default function SimpleFinConnect() {
   const { user } = useAuth()
   const { activeHouseholdId, accounts } = useHousehold()
@@ -20,6 +28,7 @@ export default function SimpleFinConnect() {
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [historyDays, setHistoryDays] = useState(90)
 
   useEffect(() => {
     if (!activeHouseholdId) return
@@ -35,7 +44,8 @@ export default function SimpleFinConnect() {
       await saveSimplefinConnection(activeHouseholdId, accessUrl)
       setConnection({ accessUrl })
       setSetupToken('')
-      setStatus('Connected. Run a sync to pull in accounts and transactions.')
+      setHistoryDays(365) // first sync after connecting should pull a real amount of history
+      setStatus('Connected. Pick how far back to import, then Sync now.')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -48,7 +58,8 @@ export default function SimpleFinConnect() {
     setBusy(true)
     setStatus('Syncing…')
     try {
-      const { accounts: sfAccounts, errors } = await fetchSimplefinData(connection.accessUrl, {})
+      const startDate = new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString()
+      const { accounts: sfAccounts, errors } = await fetchSimplefinData(connection.accessUrl, { startDate })
       let newAccounts = 0
       let newTx = 0
 
@@ -120,8 +131,23 @@ export default function SimpleFinConnect() {
           </button>
         </form>
       ) : (
+        <>
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sage text-sm font-medium">● Connected</span>
+          <label className="text-xs text-ink-soft flex items-center gap-2">
+            Import
+            <select
+              className="border border-line rounded px-2 py-1.5 text-sm bg-white/60"
+              value={historyDays}
+              onChange={(e) => setHistoryDays(Number(e.target.value))}
+            >
+              {HISTORY_OPTIONS.map((opt) => (
+                <option key={opt.days} value={opt.days}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             onClick={handleSync}
             disabled={busy}
@@ -133,6 +159,11 @@ export default function SimpleFinConnect() {
             Disconnect
           </button>
         </div>
+        <p className="text-xs text-ink-soft mt-2">
+          Re-syncing never creates duplicates — it's safe to run a longer range again if you need older
+          transactions than your first import covered.
+        </p>
+        </>
       )}
 
       {status && <p className="text-sm text-sage mt-3">{status}</p>}
