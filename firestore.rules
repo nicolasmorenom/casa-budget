@@ -28,6 +28,9 @@ service cloud.firestore {
       match /accounts/{accountId} {
         allow read, write: if isHouseholdMember(householdId);
       }
+      match /members/{uid} {
+        allow read, write: if isHouseholdMember(householdId);
+      }
       match /categories/{categoryId} {
         allow read, write: if isHouseholdMember(householdId);
       }

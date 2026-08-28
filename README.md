@@ -11,12 +11,28 @@ Netlify (including two Netlify Functions for the SimpleFIN proxy).
 - Multi-household model: each user can belong to a household, created or
   joined via a 6-character invite code — this is the "multi-household"
   piece for turning this into a public product later
+- Household member profiles (`households/{id}/members/{uid}`) so names show
+  up in the UI instead of raw ids
 - Accounts, Categories, Transactions, Budgets pages, all live-synced via
   Firestore `onSnapshot`
-- Dashboard: net worth, this month's income/spend, category breakdown chart,
-  recent activity ledger
-- SimpleFIN Bridge connection: paste a setup token once, then "Sync now" to
-  pull accounts + transactions into Firestore, deduplicated by SimpleFIN id
+- Dashboard: income, expenses, and remaining balance for the selected month,
+  a category breakdown chart, recent activity, and — when a household has
+  more than one member — a "shared spending by member" section
+- A month switcher (Dashboard and Budgets share one `PeriodContext`) so past
+  months can be reviewed separately from the current one
+- Shared-cost tracking: any expense can be marked "shared" with a "paid by"
+  member; the Dashboard turns that into a simple fair-share breakdown
+  (who's owed, who owes) — not a full settle-up ledger, just enough to see
+  at a glance
+- A floating "+" quick-add button on every page for logging an expense in a
+  few taps, without navigating to the Transactions page first
+- Bilingual UI (Spanish default, English toggle) via a small `t()` helper in
+  `LanguageContext` — preference is remembered in `localStorage`
+- Default expense categories seeded in Spanish (rent/mortgage, groceries,
+  utilities, transportation, dining out, entertainment, savings) — same
+  shape as most household-budget apps use, editable afterward
+- SimpleFIN Bridge connection: paste a setup token once, then pick how much
+  history to import and hit "Sync now" — see the SimpleFIN section below
 - A deliberately unbranded "ledger" visual language: serif display type,
   tabular-mono numerals, hairline dividers — see Design notes below
 
@@ -101,15 +117,19 @@ Admin SDK instead, so the credential never touches the client SDK at all.
 ```
 users/{uid}                          { householdIds: [...] }
 households/{id}                      { name, memberUids: [...], inviteCode }
+households/{id}/members/{uid}        { displayName, email }
 households/{id}/accounts/{aid}       { name, type, balance, currency, simplefinAccountId }
 households/{id}/categories/{cid}     { name, kind: income|expense, color, monthlyBudget }
-households/{id}/transactions/{tid}   { accountId, categoryId, amount, description, date, simplefinId }
+households/{id}/transactions/{tid}   { accountId, categoryId, amount, description, date, simplefinId, paidBy, shared }
 households/{id}/simplefin/connection { accessUrl, lastSyncedAt }
 ```
 
 Budgets aren't a separate collection — a category's `monthlyBudget` is
-compared against that category's transactions in the current calendar month
-on the Budgets page. Simple, and enough for a first version.
+compared against that category's transactions in the selected month on the
+Budgets page. `paidBy` defaults to whoever created the transaction; `shared`
+opts it into the Dashboard's fair-share breakdown. Simple, and enough for a
+first version — see "Suggested next steps" for where a real Splitwise-style
+settle-up would go if you need one later.
 
 ## Design notes
 
@@ -121,14 +141,14 @@ look.
 
 ## Suggested next steps
 
-- Resolve member display names in Settings (currently just shows a count —
-  you'd want a `households/{id}/members/{uid}` doc with displayName/email
-  written on join, or a Cloud Function to look up `users/{uid}` docs since
-  Firestore rules won't let one member read another's top-level user doc
-  as written)
+- Real settle-up logic for shared expenses (a "mark as settled" action, or
+  a running balance across months rather than resetting fair-share to zero
+  each period)
 - Recurring/scheduled transactions
 - CSV export
 - Multi-currency support (currently assumes USD-like single currency per
   account)
 - Automatic scheduled SimpleFIN sync (a Netlify scheduled function) instead
   of manual "Sync now"
+- Extend the `t()` translation coverage to the SimpleFIN connection card in
+  Settings, which is still English-only

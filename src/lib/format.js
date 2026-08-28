@@ -17,3 +17,13 @@ export function currentPeriod() {
 export function isInPeriod(isoDate, period) {
   return isoDate?.startsWith(period)
 }
+
+export function periodLabel(period, lang = 'es') {
+  const monthNames = {
+    es: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+    en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+  }
+  const [year, month] = period.split('-').map(Number)
+  const name = (monthNames[lang] || monthNames.es)[month - 1]
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${year}`
+}

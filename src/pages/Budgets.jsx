@@ -1,50 +1,57 @@
 import { useMemo, useState } from 'react'
 import { useHousehold } from '../contexts/HouseholdContext'
+import { useLanguage } from '../contexts/LanguageContext'
+import { usePeriod } from '../contexts/PeriodContext'
 import { addCategory, updateCategory, deleteCategory } from '../lib/firestore'
-import { formatMoney, currentPeriod, isInPeriod } from '../lib/format'
+import { formatMoney, isInPeriod } from '../lib/format'
+import PeriodSwitcher from '../components/PeriodSwitcher'
 
 export default function Budgets() {
   const { activeHouseholdId, categories, transactions } = useHousehold()
+  const { t } = useLanguage()
+  const { period } = usePeriod()
   const [showForm, setShowForm] = useState(false)
-  const period = currentPeriod()
 
-  const monthExpenses = useMemo(() => transactions.filter((t) => t.amount < 0 && isInPeriod(t.date, period)), [transactions, period])
+  const periodExpenses = useMemo(() => transactions.filter((tx) => tx.amount < 0 && isInPeriod(tx.date, period)), [transactions, period])
 
   const spentByCategory = useMemo(() => {
     const totals = {}
-    monthExpenses.forEach((t) => {
-      const key = t.categoryId || 'uncategorized'
-      totals[key] = (totals[key] || 0) + Math.abs(t.amount)
+    periodExpenses.forEach((tx) => {
+      const key = tx.categoryId || 'uncategorized'
+      totals[key] = (totals[key] || 0) + Math.abs(tx.amount)
     })
     return totals
-  }, [monthExpenses])
+  }, [periodExpenses])
 
   const expenseCategories = categories.filter((c) => c.kind === 'expense')
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-3xl">Budgets</h1>
-        <button
-          onClick={() => setShowForm((s) => !s)}
-          className="bg-ink text-paper rounded px-4 py-2 text-sm font-medium hover:bg-ink-soft transition-colors"
-        >
-          {showForm ? 'Cancel' : '+ Add category'}
-        </button>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="font-display text-3xl">{t('budgets.title')}</h1>
+        <div className="flex items-center gap-3">
+          <PeriodSwitcher />
+          <button
+            onClick={() => setShowForm((s) => !s)}
+            className="bg-ink text-paper rounded px-4 py-2 text-sm font-medium hover:bg-ink-soft transition-colors"
+          >
+            {showForm ? t('common.cancel') : t('budgets.add')}
+          </button>
+        </div>
       </div>
 
-      {showForm && <CategoryForm householdId={activeHouseholdId} onDone={() => setShowForm(false)} />}
+      {showForm && <CategoryForm householdId={activeHouseholdId} onDone={() => setShowForm(false)} t={t} />}
 
       <div className="flex flex-col gap-3">
         {expenseCategories.map((c) => (
-          <BudgetRow key={c.id} category={c} spent={spentByCategory[c.id] || 0} householdId={activeHouseholdId} />
+          <BudgetRow key={c.id} category={c} spent={spentByCategory[c.id] || 0} householdId={activeHouseholdId} t={t} />
         ))}
       </div>
     </div>
   )
 }
 
-function BudgetRow({ category, spent, householdId }) {
+function BudgetRow({ category, spent, householdId, t }) {
   const [editing, setEditing] = useState(false)
   const [budget, setBudget] = useState(category.monthlyBudget)
   const pct = category.monthlyBudget > 0 ? Math.min(100, (spent / category.monthlyBudget) * 100) : 0
@@ -75,7 +82,7 @@ function BudgetRow({ category, spent, householdId }) {
                 autoFocus
               />
               <button onClick={saveBudget} className="text-sage text-xs">
-                Save
+                {t('common.save')}
               </button>
             </>
           ) : (
@@ -84,7 +91,7 @@ function BudgetRow({ category, spent, householdId }) {
             </button>
           )}
           <button onClick={() => deleteCategory(householdId, category.id)} className="text-rust text-xs ml-2 hover:underline">
-            Remove
+            {t('common.remove')}
           </button>
         </div>
       </div>
@@ -95,7 +102,7 @@ function BudgetRow({ category, spent, householdId }) {
   )
 }
 
-function CategoryForm({ householdId, onDone }) {
+function CategoryForm({ householdId, onDone, t }) {
   const [name, setName] = useState('')
   const [kind, setKind] = useState('expense')
   const [monthlyBudget, setMonthlyBudget] = useState('')
@@ -110,18 +117,18 @@ function CategoryForm({ householdId, onDone }) {
   return (
     <form onSubmit={handleSubmit} className="bg-paper-raised border border-line rounded-lg p-4 flex flex-wrap gap-3 items-end">
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-ink-soft">Name</label>
+        <label className="text-xs text-ink-soft">{t('common.name')}</label>
         <input className="border border-line rounded px-3 py-2 bg-white/60" required value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-ink-soft">Kind</label>
+        <label className="text-xs text-ink-soft">{t('budgets.kind')}</label>
         <select className="border border-line rounded px-3 py-2 bg-white/60" value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="expense">Expense</option>
-          <option value="income">Income</option>
+          <option value="expense">{t('common.expense')}</option>
+          <option value="income">{t('common.income')}</option>
         </select>
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-ink-soft">Monthly budget</label>
+        <label className="text-xs text-ink-soft">{t('budgets.monthlyBudget')}</label>
         <input
           type="number"
           step="0.01"
@@ -131,11 +138,11 @@ function CategoryForm({ householdId, onDone }) {
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-ink-soft">Color</label>
+        <label className="text-xs text-ink-soft">{t('budgets.color')}</label>
         <input type="color" className="border border-line rounded h-10 w-14 bg-white/60" value={color} onChange={(e) => setColor(e.target.value)} />
       </div>
       <button type="submit" className="bg-amber text-paper rounded px-4 py-2 text-sm font-medium">
-        Add
+        {t('common.add')}
       </button>
     </form>
   )

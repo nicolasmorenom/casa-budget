@@ -25,7 +25,7 @@ function randomInviteCode() {
   return code
 }
 
-export async function createHousehold(uid, name) {
+export async function createHousehold(uid, name, profile = {}) {
   const householdRef = await addDoc(collection(db, 'households'), {
     name,
     memberUids: [uid],
@@ -33,18 +33,32 @@ export async function createHousehold(uid, name) {
     createdAt: serverTimestamp(),
   })
   await setDoc(doc(db, 'users', uid), { householdIds: arrayUnion(householdRef.id) }, { merge: true })
+  await setDoc(doc(db, 'households', householdRef.id, 'members', uid), {
+    displayName: profile.displayName || profile.email || 'Member',
+    email: profile.email || null,
+  })
   await seedDefaultCategories(householdRef.id)
   return householdRef.id
 }
 
-export async function joinHouseholdByInviteCode(uid, code) {
+export async function joinHouseholdByInviteCode(uid, code, profile = {}) {
   const q = query(collection(db, 'households'), where('inviteCode', '==', code.trim().toUpperCase()))
   const snap = await getDocs(q)
   if (snap.empty) throw new Error('No household found with that invite code.')
   const householdDoc = snap.docs[0]
   await updateDoc(householdDoc.ref, { memberUids: arrayUnion(uid) })
   await setDoc(doc(db, 'users', uid), { householdIds: arrayUnion(householdDoc.id) }, { merge: true })
+  await setDoc(doc(db, 'households', householdDoc.id, 'members', uid), {
+    displayName: profile.displayName || profile.email || 'Member',
+    email: profile.email || null,
+  })
   return householdDoc.id
+}
+
+export function subscribeMembers(householdId, cb) {
+  return onSnapshot(collection(db, 'households', householdId, 'members'), (snap) =>
+    cb(snap.docs.map((d) => ({ uid: d.id, ...d.data() })))
+  )
 }
 
 export function subscribeUserDoc(uid, cb) {
@@ -87,14 +101,14 @@ export function deleteAccount(householdId, accountId) {
 // ---------- Categories ----------
 
 const DEFAULT_CATEGORIES = [
-  { name: 'Salary', kind: 'income', color: '#3f6b52', monthlyBudget: 0 },
-  { name: 'Groceries', kind: 'expense', color: '#a24a35', monthlyBudget: 600 },
-  { name: 'Housing', kind: 'expense', color: '#b9832e', monthlyBudget: 1800 },
-  { name: 'Utilities', kind: 'expense', color: '#7a6a53', monthlyBudget: 250 },
-  { name: 'Transportation', kind: 'expense', color: '#5b7a99', monthlyBudget: 200 },
-  { name: 'Dining Out', kind: 'expense', color: '#a2665b', monthlyBudget: 250 },
-  { name: 'Fun Money', kind: 'expense', color: '#8a6ba8', monthlyBudget: 150 },
-  { name: 'Savings', kind: 'expense', color: '#3f6b52', monthlyBudget: 400 },
+  { name: 'Salario / Ingresos', kind: 'income', color: '#3f6b52', monthlyBudget: 0 },
+  { name: 'Arriendo / Hipoteca', kind: 'expense', color: '#b9832e', monthlyBudget: 1800 },
+  { name: 'Mercado', kind: 'expense', color: '#a24a35', monthlyBudget: 600 },
+  { name: 'Servicios públicos', kind: 'expense', color: '#7a6a53', monthlyBudget: 250 },
+  { name: 'Transporte', kind: 'expense', color: '#5b7a99', monthlyBudget: 200 },
+  { name: 'Restaurantes', kind: 'expense', color: '#a2665b', monthlyBudget: 250 },
+  { name: 'Entretenimiento', kind: 'expense', color: '#8a6ba8', monthlyBudget: 150 },
+  { name: 'Ahorros', kind: 'expense', color: '#3f6b52', monthlyBudget: 400 },
 ]
 
 async function seedDefaultCategories(householdId) {
@@ -142,6 +156,8 @@ export function addTransaction(householdId, uid, tx) {
     date: tx.date, // ISO date string, e.g. 2026-08-28
     pending: !!tx.pending,
     simplefinId: tx.simplefinId || null,
+    paidBy: tx.paidBy || uid,
+    shared: !!tx.shared,
     createdBy: uid,
     createdAt: serverTimestamp(),
   })

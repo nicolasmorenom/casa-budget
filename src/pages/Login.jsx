@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useLanguage } from '../contexts/LanguageContext'
 
 export default function Login() {
   const { signIn, signUp, signInWithGoogle } = useAuth()
+  const { t, lang, setLang } = useLanguage()
   const [mode, setMode] = useState('signin') // 'signin' | 'signup'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -25,12 +27,19 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center px-4 relative">
+      <button
+        onClick={() => setLang(lang === 'es' ? 'en' : 'es')}
+        className="absolute top-4 right-4 text-xs border border-line rounded-full px-3 py-1 text-ink-soft hover:bg-paper-raised"
+      >
+        {lang === 'es' ? 'EN' : 'ES'}
+      </button>
+
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <p className="font-display text-4xl leading-none">Casa</p>
           <p className="font-display text-4xl leading-none text-amber -mt-1">Budget</p>
-          <p className="text-ink-soft mt-3 text-sm">The household ledger, kept together.</p>
+          <p className="text-ink-soft mt-3 text-sm">{t('login.tagline')}</p>
         </div>
 
         <div className="bg-paper-raised border border-line rounded-lg p-6">
@@ -38,7 +47,7 @@ export default function Login() {
             {mode === 'signup' && (
               <input
                 className="border border-line rounded px-3 py-2 bg-white/60"
-                placeholder="Your name"
+                placeholder={t('login.name')}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -46,7 +55,7 @@ export default function Login() {
             <input
               className="border border-line rounded px-3 py-2 bg-white/60"
               type="email"
-              placeholder="Email"
+              placeholder={t('login.email')}
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -54,7 +63,7 @@ export default function Login() {
             <input
               className="border border-line rounded px-3 py-2 bg-white/60"
               type="password"
-              placeholder="Password"
+              placeholder={t('login.password')}
               required
               minLength={6}
               value={password}
@@ -66,29 +75,29 @@ export default function Login() {
               disabled={busy}
               className="bg-ink text-paper rounded py-2 font-medium hover:bg-ink-soft transition-colors disabled:opacity-50"
             >
-              {mode === 'signin' ? 'Sign in' : 'Create account'}
+              {mode === 'signin' ? t('login.signIn') : t('login.signUp')}
             </button>
           </form>
 
           <div className="flex items-center gap-3 my-4 text-xs text-ink-soft">
-            <div className="h-px bg-line flex-1" /> or <div className="h-px bg-line flex-1" />
+            <div className="h-px bg-line flex-1" /> {t('login.or')} <div className="h-px bg-line flex-1" />
           </div>
 
           <button
             onClick={signInWithGoogle}
             className="w-full border border-line rounded py-2 font-medium hover:bg-white/60 transition-colors"
           >
-            Continue with Google
+            {t('login.google')}
           </button>
         </div>
 
         <p className="text-center text-sm text-ink-soft mt-4">
-          {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+          {mode === 'signin' ? t('login.noAccount') : t('login.hasAccount')}
           <button
             className="text-amber font-medium hover:underline"
             onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
           >
-            {mode === 'signin' ? 'Sign up' : 'Sign in'}
+            {mode === 'signin' ? t('login.signUp') : t('login.signIn')}
           </button>
         </p>
       </div>

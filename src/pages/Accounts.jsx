@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useHousehold } from '../contexts/HouseholdContext'
+import { useLanguage } from '../contexts/LanguageContext'
 import { addAccount, updateAccount, deleteAccount } from '../lib/firestore'
 import { formatMoney } from '../lib/format'
 
@@ -7,36 +8,35 @@ const ACCOUNT_TYPES = ['checking', 'savings', 'credit', 'cash', 'investment']
 
 export default function Accounts() {
   const { activeHouseholdId, accounts } = useHousehold()
+  const { t } = useLanguage()
   const [showForm, setShowForm] = useState(false)
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="font-display text-3xl">Accounts</h1>
+        <h1 className="font-display text-3xl">{t('accounts.title')}</h1>
         <button
           onClick={() => setShowForm((s) => !s)}
           className="bg-ink text-paper rounded px-4 py-2 text-sm font-medium hover:bg-ink-soft transition-colors"
         >
-          {showForm ? 'Cancel' : '+ Add account'}
+          {showForm ? t('common.cancel') : t('accounts.add')}
         </button>
       </div>
 
-      {showForm && <AccountForm householdId={activeHouseholdId} onDone={() => setShowForm(false)} />}
+      {showForm && <AccountForm householdId={activeHouseholdId} onDone={() => setShowForm(false)} t={t} />}
 
       <div className="bg-paper-raised border border-line rounded-lg">
         {accounts.length === 0 ? (
-          <p className="text-ink-soft text-sm p-4">
-            No accounts yet. Add one manually, or connect your bank via SimpleFIN from Settings.
-          </p>
+          <p className="text-ink-soft text-sm p-4">{t('accounts.empty')}</p>
         ) : (
-          accounts.map((a) => <AccountRow key={a.id} account={a} householdId={activeHouseholdId} />)
+          accounts.map((a) => <AccountRow key={a.id} account={a} householdId={activeHouseholdId} t={t} />)
         )}
       </div>
     </div>
   )
 }
 
-function AccountRow({ account, householdId }) {
+function AccountRow({ account, householdId, t }) {
   const [editing, setEditing] = useState(false)
   const [balance, setBalance] = useState(account.balance)
 
@@ -51,7 +51,7 @@ function AccountRow({ account, householdId }) {
         <p className="font-medium">{account.name}</p>
         <p className="text-xs text-ink-soft capitalize">
           {account.type}
-          {account.simplefinAccountId ? ' · synced via SimpleFIN' : ' · manual'}
+          {account.simplefinAccountId ? ` · ${t('accounts.synced')}` : ` · ${t('accounts.manual')}`}
         </p>
       </div>
       <div className="flex items-center gap-3">
@@ -64,14 +64,14 @@ function AccountRow({ account, householdId }) {
               autoFocus
             />
             <button onClick={saveBalance} className="text-sage text-sm font-medium">
-              Save
+              {t('common.save')}
             </button>
           </>
         ) : (
           <button
             onClick={() => !account.simplefinAccountId && setEditing(true)}
             className="font-mono-num text-lg"
-            title={account.simplefinAccountId ? 'Balance updates via SimpleFIN sync' : 'Click to edit'}
+            title={account.simplefinAccountId ? undefined : 'Click to edit'}
           >
             {formatMoney(account.balance, account.currency)}
           </button>
@@ -80,14 +80,14 @@ function AccountRow({ account, householdId }) {
           onClick={() => deleteAccount(householdId, account.id)}
           className="text-rust text-xs hover:underline"
         >
-          Remove
+          {t('common.remove')}
         </button>
       </div>
     </div>
   )
 }
 
-function AccountForm({ householdId, onDone }) {
+function AccountForm({ householdId, onDone, t }) {
   const [name, setName] = useState('')
   const [type, setType] = useState('checking')
   const [balance, setBalance] = useState('')
@@ -101,7 +101,7 @@ function AccountForm({ householdId, onDone }) {
   return (
     <form onSubmit={handleSubmit} className="bg-paper-raised border border-line rounded-lg p-4 flex flex-wrap gap-3 items-end">
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-ink-soft">Name</label>
+        <label className="text-xs text-ink-soft">{t('common.name')}</label>
         <input
           className="border border-line rounded px-3 py-2 bg-white/60"
           required
@@ -110,17 +110,17 @@ function AccountForm({ householdId, onDone }) {
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-ink-soft">Type</label>
+        <label className="text-xs text-ink-soft">{t('common.type')}</label>
         <select className="border border-line rounded px-3 py-2 bg-white/60" value={type} onChange={(e) => setType(e.target.value)}>
-          {ACCOUNT_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
+          {ACCOUNT_TYPES.map((tp) => (
+            <option key={tp} value={tp}>
+              {tp}
             </option>
           ))}
         </select>
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-ink-soft">Starting balance</label>
+        <label className="text-xs text-ink-soft">{t('accounts.startingBalance')}</label>
         <input
           type="number"
           step="0.01"
@@ -130,7 +130,7 @@ function AccountForm({ householdId, onDone }) {
         />
       </div>
       <button type="submit" className="bg-amber text-paper rounded px-4 py-2 text-sm font-medium">
-        Add
+        {t('common.add')}
       </button>
     </form>
   )
