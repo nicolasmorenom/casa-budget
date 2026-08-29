@@ -4,6 +4,7 @@ import { useHousehold } from '../contexts/HouseholdContext'
 import { useLanguage } from '../contexts/LanguageContext'
 import { addTransaction } from '../lib/firestore'
 import { suggestCategoryId } from '../lib/categorize'
+import CategoryCreateInline from './CategoryCreateInline'
 
 export default function QuickAddExpense() {
   const { user } = useAuth()
@@ -44,6 +45,7 @@ function QuickAddModal({ onClose, uid, householdId, accounts, categories, member
   const [description, setDescription] = useState('')
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '')
   const [categoryTouched, setCategoryTouched] = useState(false)
+  const [creatingCategory, setCreatingCategory] = useState(false)
   const [accountId, setAccountId] = useState(accounts[0]?.id || '')
   const [shared, setShared] = useState(false)
   const [paidBy, setPaidBy] = useState(uid)
@@ -110,31 +112,54 @@ function QuickAddModal({ onClose, uid, householdId, accounts, categories, member
         />
 
         <div className="grid grid-cols-2 gap-3">
-          <select
-            className="border border-line rounded px-3 py-2 bg-paper-raised"
-            value={categoryId}
-            onChange={(e) => {
-              setCategoryTouched(true)
-              setCategoryId(e.target.value)
-            }}
-          >
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <select
-            className="border border-line rounded px-3 py-2 bg-paper-raised"
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-          >
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <div className={creatingCategory ? 'col-span-2' : ''}>
+            {creatingCategory ? (
+              <CategoryCreateInline
+                householdId={householdId}
+                kind="expense"
+                t={t}
+                onCancel={() => setCreatingCategory(false)}
+                onCreated={(newId) => {
+                  setCategoryId(newId)
+                  setCategoryTouched(true)
+                  setCreatingCategory(false)
+                }}
+              />
+            ) : (
+              <select
+                className="border border-line rounded px-3 py-2 bg-paper-raised w-full"
+                value={categoryId}
+                onChange={(e) => {
+                  if (e.target.value === '__new__') {
+                    setCreatingCategory(true)
+                    return
+                  }
+                  setCategoryTouched(true)
+                  setCategoryId(e.target.value)
+                }}
+              >
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+                <option value="__new__">{t('categories.newOption')}</option>
+              </select>
+            )}
+          </div>
+          {!creatingCategory && (
+            <select
+              className="border border-line rounded px-3 py-2 bg-paper-raised"
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+            >
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {members.length > 1 && (

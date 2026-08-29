@@ -77,6 +77,7 @@ export const translations = {
     'transactions.title': 'Movimientos',
     'transactions.add': '+ Agregar',
     'transactions.allAccounts': 'Todas las cuentas',
+    'transactions.allCategories': 'Todas',
     'transactions.thisMonthOnly': 'Solo este período',
     'transactions.allTime': 'Ver todo el historial',
     'transactions.count': 'Movimientos',
@@ -95,6 +96,8 @@ export const translations = {
     'budgets.monthlyBudget': 'Presupuesto mensual',
     'budgets.kind': 'Tipo',
     'budgets.color': 'Color',
+    'categories.newOption': '+ Nueva categoría…',
+    'categories.newPlaceholder': 'Nombre de la categoría',
 
     'settings.title': 'Ajustes',
     'settings.members': 'miembro',
@@ -190,6 +193,7 @@ export const translations = {
     'transactions.title': 'Transactions',
     'transactions.add': '+ Add',
     'transactions.allAccounts': 'All accounts',
+    'transactions.allCategories': 'All',
     'transactions.thisMonthOnly': 'This period only',
     'transactions.allTime': 'View full history',
     'transactions.count': 'Transactions',
@@ -208,6 +212,8 @@ export const translations = {
     'budgets.monthlyBudget': 'Monthly budget',
     'budgets.kind': 'Kind',
     'budgets.color': 'Color',
+    'categories.newOption': '+ New category…',
+    'categories.newPlaceholder': 'Category name',
 
     'settings.title': 'Settings',
     'settings.members': 'member',

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useHousehold } from '../contexts/HouseholdContext'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -7,6 +7,7 @@ import { addTransaction, deleteTransaction, updateTransaction } from '../lib/fir
 import { suggestCategoryId } from '../lib/categorize'
 import { formatMoney, formatDate, isInPeriod } from '../lib/format'
 import PeriodSwitcher from '../components/PeriodSwitcher'
+import CategoryCreateInline from '../components/CategoryCreateInline'
 
 export default function Transactions() {
   const { user } = useAuth()
@@ -15,6 +16,7 @@ export default function Transactions() {
   const { period } = usePeriod()
   const [showForm, setShowForm] = useState(false)
   const [accountFilter, setAccountFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const [allTime, setAllTime] = useState(false)
   const [autoCatStatus, setAutoCatStatus] = useState('')
 
@@ -22,12 +24,42 @@ export default function Transactions() {
   const accountMap = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a])), [accounts])
   const memberMap = useMemo(() => Object.fromEntries(members.map((m) => [m.uid, m])), [members])
 
-  const filtered = useMemo(() => {
+  // Period + account filtered, before the category filter — this is what category totals are based on,
+  // so totals stay accurate regardless of which category chip (if any) is currently selected.
+  const baseFiltered = useMemo(() => {
     let list = transactions
     if (!allTime) list = list.filter((tx) => isInPeriod(tx.date, period))
     if (accountFilter !== 'all') list = list.filter((tx) => tx.accountId === accountFilter)
     return list
   }, [transactions, accountFilter, allTime, period])
+
+  const categoryTotals = useMemo(() => {
+    const totals = {}
+    baseFiltered.forEach((tx) => {
+      const key = tx.categoryId || 'uncategorized'
+      totals[key] = (totals[key] || 0) + Math.abs(tx.amount)
+    })
+    return Object.entries(totals)
+      .map(([id, total]) => ({
+        id,
+        total,
+        name: id === 'uncategorized' ? t('common.uncategorized') : categoryMap[id]?.name || t('common.uncategorized'),
+        color: id === 'uncategorized' ? '#8a8578' : categoryMap[id]?.color || '#8a8578',
+      }))
+      .sort((a, b) => b.total - a.total)
+  }, [baseFiltered, categoryMap, t])
+
+  const filtered = useMemo(() => {
+    if (categoryFilter === 'all') return baseFiltered
+    if (categoryFilter === 'uncategorized') return baseFiltered.filter((tx) => !tx.categoryId)
+    return baseFiltered.filter((tx) => tx.categoryId === categoryFilter)
+  }, [baseFiltered, categoryFilter])
+
+  // Reset the category chip when the underlying period changes, same as the account
+  // filter does implicitly — avoids landing on a chip with nothing in it after nav.
+  useEffect(() => {
+    setCategoryFilter('all')
+  }, [period, allTime])
 
   const periodIncome = useMemo(() => filtered.filter((tx) => tx.amount > 0).reduce((s, tx) => s + tx.amount, 0), [filtered])
   const periodExpense = useMemo(
@@ -96,6 +128,32 @@ export default function Transactions() {
         </button>
       </div>
 
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        <button
+          onClick={() => setCategoryFilter('all')}
+          className={`shrink-0 text-xs px-3 py-1.5 rounded-full border ${
+            categoryFilter === 'all' ? 'bg-ink text-paper border-ink' : 'border-line text-ink-soft'
+          }`}
+        >
+          {t('transactions.allCategories')}
+        </button>
+        {categoryTotals.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => setCategoryFilter((prev) => (prev === c.id ? 'all' : c.id))}
+            className="shrink-0 text-xs px-3 py-1.5 rounded-full border flex items-center gap-1.5"
+            style={
+              categoryFilter === c.id
+                ? { backgroundColor: c.color, borderColor: c.color, color: '#fff' }
+                : { borderColor: 'var(--color-line)', color: c.color }
+            }
+          >
+            <span>{c.name}</span>
+            <span className="font-mono-num opacity-80">{formatMoney(c.total)}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-3 gap-3">
         <SummaryChip label={t('dashboard.income')} value={periodIncome} tone="sage" />
         <SummaryChip label={t('dashboard.spent')} value={periodExpense} tone="rust" />
@@ -150,6 +208,7 @@ function SummaryChip({ label, value, tone, isCount }) {
 
 function TransactionRow({ tx, account, category, categories, paidByMember, householdId, t }) {
   const [editingCategory, setEditingCategory] = useState(false)
+  const [creatingCategory, setCreatingCategory] = useState(false)
 
   return (
     <div className="ledger-row flex items-center justify-between px-4 py-2.5 gap-3">
@@ -162,12 +221,28 @@ function TransactionRow({ tx, account, category, categories, paidByMember, house
         </p>
       </div>
 
-      {editingCategory ? (
+      {creatingCategory ? (
+        <CategoryCreateInline
+          householdId={householdId}
+          kind={tx.amount < 0 ? 'expense' : 'income'}
+          t={t}
+          onCancel={() => setCreatingCategory(false)}
+          onCreated={(newId) => {
+            updateTransaction(householdId, tx.id, { categoryId: newId })
+            setCreatingCategory(false)
+            setEditingCategory(false)
+          }}
+        />
+      ) : editingCategory ? (
         <select
           autoFocus
           className="border border-line rounded px-2 py-1 text-xs bg-white/60"
           value={tx.categoryId || ''}
           onChange={(e) => {
+            if (e.target.value === '__new__') {
+              setCreatingCategory(true)
+              return
+            }
             updateTransaction(householdId, tx.id, { categoryId: e.target.value || null })
             setEditingCategory(false)
           }}
@@ -179,6 +254,7 @@ function TransactionRow({ tx, account, category, categories, paidByMember, house
               {c.name}
             </option>
           ))}
+          <option value="__new__">{t('categories.newOption')}</option>
         </select>
       ) : (
         <button
@@ -207,6 +283,7 @@ function TransactionForm({ householdId, uid, accounts, categories, members, t, o
   const [accountId, setAccountId] = useState(accounts[0]?.id || '')
   const [categoryId, setCategoryId] = useState('')
   const [categoryTouched, setCategoryTouched] = useState(false)
+  const [creatingCategory, setCreatingCategory] = useState(false)
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [direction, setDirection] = useState('expense')
@@ -251,21 +328,42 @@ function TransactionForm({ householdId, uid, accounts, categories, members, t, o
         />
       </Field>
       <Field label={t('common.category')}>
-        <select
-          className="border border-line rounded px-3 py-2 bg-white/60"
-          value={categoryId}
-          onChange={(e) => {
-            setCategoryTouched(true)
-            setCategoryId(e.target.value)
-          }}
-        >
-          <option value="">{t('common.uncategorized')}</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+        {creatingCategory ? (
+          <CategoryCreateInline
+            householdId={householdId}
+            kind={direction}
+            t={t}
+            onCancel={() => setCreatingCategory(false)}
+            onCreated={(newId) => {
+              setCategoryId(newId)
+              setCategoryTouched(true)
+              setCreatingCategory(false)
+            }}
+          />
+        ) : (
+          <select
+            className="border border-line rounded px-3 py-2 bg-white/60"
+            value={categoryId}
+            onChange={(e) => {
+              if (e.target.value === '__new__') {
+                setCreatingCategory(true)
+                return
+              }
+              setCategoryTouched(true)
+              setCategoryId(e.target.value)
+            }}
+          >
+            <option value="">{t('common.uncategorized')}</option>
+            {categories
+              .filter((c) => c.kind === direction)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            <option value="__new__">{t('categories.newOption')}</option>
+          </select>
+        )}
       </Field>
       <Field label={t('common.type')}>
         <select className="border border-line rounded px-3 py-2 bg-white/60" value={direction} onChange={(e) => setDirection(e.target.value)}>
