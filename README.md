@@ -31,6 +31,14 @@ Netlify (including two Netlify Functions for the SimpleFIN proxy).
 - Default expense categories seeded in Spanish (rent/mortgage, groceries,
   utilities, transportation, dining out, entertainment, savings) — same
   shape as most household-budget apps use, editable afterward
+- Pre-categorization: a small keyword-matching helper (`src/lib/categorize.js`)
+  suggests a category as you type a description (in both the Transactions
+  form and the quick-add modal), auto-tags new SimpleFIN-imported
+  transactions the same way, and a "Categorize automatically" button on the
+  Transactions page runs it over whatever's already sitting uncategorized.
+  It's rule-based, not ML — covers common US and Colombian merchant names,
+  and only ever suggests; it never overrides a category you've picked
+  yourself
 - SimpleFIN Bridge connection: paste a setup token once, then pick how much
   history to import and hit "Sync now" — see the SimpleFIN section below
 - A deliberately unbranded "ledger" visual language: serif display type,
@@ -144,6 +152,9 @@ look.
 - Real settle-up logic for shared expenses (a "mark as settled" action, or
   a running balance across months rather than resetting fair-share to zero
   each period)
+- Expand `categorize.js`'s keyword rules as you notice misses — it's a flat
+  array of `{ type, nameMatch, textMatch }` rules, easy to extend, or swap
+  for a real ML classifier later if keyword matching stops being enough
 - Recurring/scheduled transactions
 - CSV export
 - Multi-currency support (currently assumes USD-like single currency per

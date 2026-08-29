@@ -83,6 +83,10 @@ export const translations = {
     'transactions.shared': 'Gasto compartido',
     'transactions.pending': 'pendiente',
     'transactions.unknownAccount': 'Cuenta desconocida',
+    'transactions.autoCategorize': 'Categorizar automáticamente',
+    'transactions.autoCategorizeHint': 'Intenta asignar categoría a los movimientos sin categorizar, según palabras clave.',
+    'transactions.autoCategorizeDone': 'Categorizados:',
+    'transactions.autoCategorizeNone': 'No se encontraron coincidencias para categorizar automáticamente.',
 
     'budgets.title': 'Presupuestos',
     'budgets.add': '+ Agregar categoría',
@@ -190,6 +194,10 @@ export const translations = {
     'transactions.shared': 'Shared expense',
     'transactions.pending': 'pending',
     'transactions.unknownAccount': 'Unknown account',
+    'transactions.autoCategorize': 'Auto-categorize',
+    'transactions.autoCategorizeHint': "Tries to assign a category to uncategorized transactions, based on keyword matching.",
+    'transactions.autoCategorizeDone': 'Categorized:',
+    'transactions.autoCategorizeNone': 'No keyword matches found to auto-categorize.',
 
     'budgets.title': 'Budgets',
     'budgets.add': '+ Add category',

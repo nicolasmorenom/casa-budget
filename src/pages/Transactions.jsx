@@ -4,6 +4,7 @@ import { useHousehold } from '../contexts/HouseholdContext'
 import { useLanguage } from '../contexts/LanguageContext'
 import { usePeriod } from '../contexts/PeriodContext'
 import { addTransaction, deleteTransaction, updateTransaction } from '../lib/firestore'
+import { suggestCategoryId } from '../lib/categorize'
 import { formatMoney, formatDate, isInPeriod } from '../lib/format'
 
 export default function Transactions() {
@@ -14,6 +15,7 @@ export default function Transactions() {
   const [showForm, setShowForm] = useState(false)
   const [accountFilter, setAccountFilter] = useState('all')
   const [periodOnly, setPeriodOnly] = useState(false)
+  const [autoCatStatus, setAutoCatStatus] = useState('')
 
   const categoryMap = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories])
   const accountMap = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a])), [accounts])
@@ -25,6 +27,26 @@ export default function Transactions() {
     if (periodOnly) list = list.filter((tx) => isInPeriod(tx.date, period))
     return list
   }, [transactions, accountFilter, periodOnly, period])
+
+  const uncategorizedCount = useMemo(() => transactions.filter((tx) => !tx.categoryId).length, [transactions])
+
+  async function handleAutoCategorize() {
+    const candidates = transactions.filter((tx) => !tx.categoryId)
+    let updated = 0
+    for (const tx of candidates) {
+      const suggestion = suggestCategoryId(tx.description, tx.amount, categories)
+      if (suggestion) {
+        await updateTransaction(activeHouseholdId, tx.id, { categoryId: suggestion })
+        updated++
+      }
+    }
+    setAutoCatStatus(
+      updated > 0
+        ? `${t('transactions.autoCategorizeDone')} ${updated}/${candidates.length}`
+        : t('transactions.autoCategorizeNone')
+    )
+    setTimeout(() => setAutoCatStatus(''), 4000)
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -47,6 +69,15 @@ export default function Transactions() {
               </option>
             ))}
           </select>
+          {uncategorizedCount > 0 && (
+            <button
+              onClick={handleAutoCategorize}
+              className="border border-line rounded px-3 py-2 text-sm text-ink-soft hover:bg-paper-raised"
+              title={t('transactions.autoCategorizeHint')}
+            >
+              {t('transactions.autoCategorize')} ({uncategorizedCount})
+            </button>
+          )}
           <button
             onClick={() => setShowForm((s) => !s)}
             className="bg-ink text-paper rounded px-4 py-2 text-sm font-medium hover:bg-ink-soft transition-colors"
@@ -55,6 +86,8 @@ export default function Transactions() {
           </button>
         </div>
       </div>
+
+      {autoCatStatus && <p className="text-sm text-sage">{autoCatStatus}</p>}
 
       {showForm && (
         <TransactionForm
@@ -148,12 +181,21 @@ function TransactionForm({ householdId, uid, accounts, categories, members, t, o
   const today = new Date().toISOString().slice(0, 10)
   const [accountId, setAccountId] = useState(accounts[0]?.id || '')
   const [categoryId, setCategoryId] = useState('')
+  const [categoryTouched, setCategoryTouched] = useState(false)
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [direction, setDirection] = useState('expense')
   const [date, setDate] = useState(today)
   const [shared, setShared] = useState(false)
   const [paidBy, setPaidBy] = useState(uid)
+
+  function handleDescriptionChange(value) {
+    setDescription(value)
+    if (!categoryTouched) {
+      const suggestion = suggestCategoryId(value, direction === 'expense' ? -1 : 1, categories)
+      if (suggestion) setCategoryId(suggestion)
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -177,10 +219,21 @@ function TransactionForm({ householdId, uid, accounts, categories, members, t, o
         </select>
       </Field>
       <Field label={t('common.description')}>
-        <input className="border border-line rounded px-3 py-2 bg-white/60" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input
+          className="border border-line rounded px-3 py-2 bg-white/60"
+          value={description}
+          onChange={(e) => handleDescriptionChange(e.target.value)}
+        />
       </Field>
       <Field label={t('common.category')}>
-        <select className="border border-line rounded px-3 py-2 bg-white/60" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+        <select
+          className="border border-line rounded px-3 py-2 bg-white/60"
+          value={categoryId}
+          onChange={(e) => {
+            setCategoryTouched(true)
+            setCategoryId(e.target.value)
+          }}
+        >
           <option value="">{t('common.uncategorized')}</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>

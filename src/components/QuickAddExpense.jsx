@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useHousehold } from '../contexts/HouseholdContext'
 import { useLanguage } from '../contexts/LanguageContext'
 import { addTransaction } from '../lib/firestore'
+import { suggestCategoryId } from '../lib/categorize'
 
 export default function QuickAddExpense() {
   const { user } = useAuth()
@@ -42,10 +43,19 @@ function QuickAddModal({ onClose, uid, householdId, accounts, categories, member
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '')
+  const [categoryTouched, setCategoryTouched] = useState(false)
   const [accountId, setAccountId] = useState(accounts[0]?.id || '')
   const [shared, setShared] = useState(false)
   const [paidBy, setPaidBy] = useState(uid)
   const [busy, setBusy] = useState(false)
+
+  function handleDescriptionChange(value) {
+    setDescription(value)
+    if (!categoryTouched) {
+      const suggestion = suggestCategoryId(value, -1, categories)
+      if (suggestion) setCategoryId(suggestion)
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -96,14 +106,17 @@ function QuickAddModal({ onClose, uid, householdId, accounts, categories, member
           className="border border-line rounded px-3 py-2 bg-paper-raised"
           placeholder={t('common.description')}
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => handleDescriptionChange(e.target.value)}
         />
 
         <div className="grid grid-cols-2 gap-3">
           <select
             className="border border-line rounded px-3 py-2 bg-paper-raised"
             value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
+            onChange={(e) => {
+              setCategoryTouched(true)
+              setCategoryId(e.target.value)
+            }}
           >
             {categories.map((c) => (
               <option key={c.id} value={c.id}>

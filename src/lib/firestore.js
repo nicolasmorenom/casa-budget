@@ -1,4 +1,5 @@
 import { db } from './firebase'
+import { suggestCategoryId } from './categorize'
 import {
   collection,
   doc,
@@ -172,8 +173,9 @@ export function deleteTransaction(householdId, txId) {
 }
 
 // Upsert used by the SimpleFIN sync flow: avoids duplicate transactions on
-// repeated syncs by keying off the SimpleFIN transaction id.
-export async function upsertTransactionsFromSimpleFin(householdId, uid, accountId, transactions) {
+// repeated syncs by keying off the SimpleFIN transaction id, and tries to
+// pre-categorize each new transaction against the household's own categories.
+export async function upsertTransactionsFromSimpleFin(householdId, uid, accountId, transactions, categories = []) {
   const existingSnap = await getDocs(
     query(collection(db, 'households', householdId, 'transactions'), where('accountId', '==', accountId))
   )
@@ -182,16 +184,19 @@ export async function upsertTransactionsFromSimpleFin(householdId, uid, accountI
   )
   const toAdd = transactions.filter((t) => !existingSimplefinIds.has(t.id))
   await Promise.all(
-    toAdd.map((t) =>
-      addTransaction(householdId, uid, {
+    toAdd.map((t) => {
+      const description = t.description || t.payee || 'Imported transaction'
+      const amount = Number(t.amount)
+      return addTransaction(householdId, uid, {
         accountId,
-        amount: t.amount,
-        description: t.description || t.payee || 'Imported transaction',
+        amount,
+        description,
         date: new Date(t.posted * 1000).toISOString().slice(0, 10),
         pending: t.pending || false,
         simplefinId: t.id,
+        categoryId: suggestCategoryId(description, amount, categories),
       })
-    )
+    })
   )
   return toAdd.length
 }

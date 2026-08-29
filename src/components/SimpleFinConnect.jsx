@@ -22,7 +22,7 @@ const HISTORY_OPTIONS = [
 
 export default function SimpleFinConnect() {
   const { user } = useAuth()
-  const { activeHouseholdId, accounts } = useHousehold()
+  const { activeHouseholdId, accounts, categories } = useHousehold()
   const [connection, setConnection] = useState(undefined)
   const [setupToken, setSetupToken] = useState('')
   const [status, setStatus] = useState('')
@@ -82,7 +82,8 @@ export default function SimpleFinConnect() {
           activeHouseholdId,
           user.uid,
           localAccount.id,
-          sfAccount.transactions || []
+          sfAccount.transactions || [],
+          categories
         )
         newTx += added
       }
