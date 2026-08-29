@@ -6,6 +6,7 @@ import { usePeriod } from '../contexts/PeriodContext'
 import { addTransaction, deleteTransaction, updateTransaction } from '../lib/firestore'
 import { suggestCategoryId } from '../lib/categorize'
 import { formatMoney, formatDate, isInPeriod } from '../lib/format'
+import PeriodSwitcher from '../components/PeriodSwitcher'
 
 export default function Transactions() {
   const { user } = useAuth()
@@ -14,7 +15,7 @@ export default function Transactions() {
   const { period } = usePeriod()
   const [showForm, setShowForm] = useState(false)
   const [accountFilter, setAccountFilter] = useState('all')
-  const [periodOnly, setPeriodOnly] = useState(false)
+  const [allTime, setAllTime] = useState(false)
   const [autoCatStatus, setAutoCatStatus] = useState('')
 
   const categoryMap = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories])
@@ -23,10 +24,16 @@ export default function Transactions() {
 
   const filtered = useMemo(() => {
     let list = transactions
+    if (!allTime) list = list.filter((tx) => isInPeriod(tx.date, period))
     if (accountFilter !== 'all') list = list.filter((tx) => tx.accountId === accountFilter)
-    if (periodOnly) list = list.filter((tx) => isInPeriod(tx.date, period))
     return list
-  }, [transactions, accountFilter, periodOnly, period])
+  }, [transactions, accountFilter, allTime, period])
+
+  const periodIncome = useMemo(() => filtered.filter((tx) => tx.amount > 0).reduce((s, tx) => s + tx.amount, 0), [filtered])
+  const periodExpense = useMemo(
+    () => filtered.filter((tx) => tx.amount < 0).reduce((s, tx) => s + Math.abs(tx.amount), 0),
+    [filtered]
+  )
 
   const uncategorizedCount = useMemo(() => transactions.filter((tx) => !tx.categoryId).length, [transactions])
 
@@ -52,39 +59,47 @@ export default function Transactions() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="font-display text-3xl">{t('transactions.title')}</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-xs text-ink-soft flex items-center gap-1.5">
-            <input type="checkbox" checked={periodOnly} onChange={(e) => setPeriodOnly(e.target.checked)} />
-            {t('transactions.thisMonthOnly')}
-          </label>
-          <select
-            className="border border-line rounded px-3 py-2 text-sm bg-paper-raised"
-            value={accountFilter}
-            onChange={(e) => setAccountFilter(e.target.value)}
-          >
-            <option value="all">{t('transactions.allAccounts')}</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-          {uncategorizedCount > 0 && (
-            <button
-              onClick={handleAutoCategorize}
-              className="border border-line rounded px-3 py-2 text-sm text-ink-soft hover:bg-paper-raised"
-              title={t('transactions.autoCategorizeHint')}
-            >
-              {t('transactions.autoCategorize')} ({uncategorizedCount})
-            </button>
-          )}
+        {!allTime && <PeriodSwitcher />}
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="text-xs text-ink-soft flex items-center gap-1.5">
+          <input type="checkbox" checked={allTime} onChange={(e) => setAllTime(e.target.checked)} />
+          {t('transactions.allTime')}
+        </label>
+        <select
+          className="border border-line rounded px-3 py-2 text-sm bg-paper-raised"
+          value={accountFilter}
+          onChange={(e) => setAccountFilter(e.target.value)}
+        >
+          <option value="all">{t('transactions.allAccounts')}</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+        {uncategorizedCount > 0 && (
           <button
-            onClick={() => setShowForm((s) => !s)}
-            className="bg-ink text-paper rounded px-4 py-2 text-sm font-medium hover:bg-ink-soft transition-colors"
+            onClick={handleAutoCategorize}
+            className="border border-line rounded px-3 py-2 text-sm text-ink-soft hover:bg-paper-raised"
+            title={t('transactions.autoCategorizeHint')}
           >
-            {showForm ? t('common.cancel') : t('transactions.add')}
+            {t('transactions.autoCategorize')} ({uncategorizedCount})
           </button>
-        </div>
+        )}
+        <button
+          onClick={() => setShowForm((s) => !s)}
+          className="bg-ink text-paper rounded px-4 py-2 text-sm font-medium hover:bg-ink-soft transition-colors ml-auto"
+        >
+          {showForm ? t('common.cancel') : t('transactions.add')}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <SummaryChip label={t('dashboard.income')} value={periodIncome} tone="sage" />
+        <SummaryChip label={t('dashboard.spent')} value={periodExpense} tone="rust" />
+        <SummaryChip label={t('transactions.count')} value={filtered.length} tone="ink" isCount />
       </div>
 
       {autoCatStatus && <p className="text-sm text-sage">{autoCatStatus}</p>}
@@ -119,6 +134,16 @@ export default function Transactions() {
           ))
         )}
       </div>
+    </div>
+  )
+}
+
+function SummaryChip({ label, value, tone, isCount }) {
+  const toneClass = { ink: 'text-ink', sage: 'text-sage', rust: 'text-rust' }[tone]
+  return (
+    <div className="bg-paper-raised border border-line rounded-lg px-3 py-2">
+      <p className="text-[11px] uppercase tracking-wide text-ink-soft">{label}</p>
+      <p className={`font-mono-num text-base ${toneClass}`}>{isCount ? value : formatMoney(value)}</p>
     </div>
   )
 }
