@@ -12,18 +12,32 @@ export default function Budgets() {
   const { period } = usePeriod()
   const [showForm, setShowForm] = useState(false)
 
-  const periodExpenses = useMemo(() => transactions.filter((tx) => tx.amount < 0 && isInPeriod(tx.date, period)), [transactions, period])
+  const periodTx = useMemo(() => transactions.filter((tx) => isInPeriod(tx.date, period)), [transactions, period])
 
   const spentByCategory = useMemo(() => {
     const totals = {}
-    periodExpenses.forEach((tx) => {
-      const key = tx.categoryId || 'uncategorized'
-      totals[key] = (totals[key] || 0) + Math.abs(tx.amount)
-    })
+    periodTx
+      .filter((tx) => tx.amount < 0)
+      .forEach((tx) => {
+        const key = tx.categoryId || 'uncategorized'
+        totals[key] = (totals[key] || 0) + Math.abs(tx.amount)
+      })
     return totals
-  }, [periodExpenses])
+  }, [periodTx])
+
+  const receivedByCategory = useMemo(() => {
+    const totals = {}
+    periodTx
+      .filter((tx) => tx.amount > 0)
+      .forEach((tx) => {
+        const key = tx.categoryId || 'uncategorized'
+        totals[key] = (totals[key] || 0) + tx.amount
+      })
+    return totals
+  }, [periodTx])
 
   const expenseCategories = categories.filter((c) => c.kind === 'expense')
+  const incomeCategories = categories.filter((c) => c.kind === 'income')
 
   return (
     <div className="flex flex-col gap-6">
@@ -42,20 +56,39 @@ export default function Budgets() {
 
       {showForm && <CategoryForm householdId={activeHouseholdId} onDone={() => setShowForm(false)} t={t} />}
 
+      {incomeCategories.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h2 className="font-display text-lg text-ink-soft">{t('budgets.incomeSection')}</h2>
+          {incomeCategories.map((c) => (
+            <BudgetRow
+              key={c.id}
+              category={c}
+              spent={receivedByCategory[c.id] || 0}
+              householdId={activeHouseholdId}
+              t={t}
+              kind="income"
+            />
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col gap-3">
+        {incomeCategories.length > 0 && <h2 className="font-display text-lg text-ink-soft">{t('budgets.expenseSection')}</h2>}
         {expenseCategories.map((c) => (
-          <BudgetRow key={c.id} category={c} spent={spentByCategory[c.id] || 0} householdId={activeHouseholdId} t={t} />
+          <BudgetRow key={c.id} category={c} spent={spentByCategory[c.id] || 0} householdId={activeHouseholdId} t={t} kind="expense" />
         ))}
       </div>
     </div>
   )
 }
 
-function BudgetRow({ category, spent, householdId, t }) {
+function BudgetRow({ category, spent, householdId, t, kind }) {
   const [editing, setEditing] = useState(false)
   const [budget, setBudget] = useState(category.monthlyBudget)
   const pct = category.monthlyBudget > 0 ? Math.min(100, (spent / category.monthlyBudget) * 100) : 0
-  const over = category.monthlyBudget > 0 && spent > category.monthlyBudget
+  // For expenses, going over budget is a warning (rust). For income, meeting or
+  // beating the target is good news, so it never turns red — just fills further.
+  const over = kind === 'expense' && category.monthlyBudget > 0 && spent > category.monthlyBudget
   const barColor = over ? 'var(--color-rust)' : 'var(--color-sage)'
 
   async function saveBudget() {

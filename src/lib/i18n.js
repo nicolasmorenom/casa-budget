@@ -96,6 +96,8 @@ export const translations = {
     'budgets.monthlyBudget': 'Presupuesto mensual',
     'budgets.kind': 'Tipo',
     'budgets.color': 'Color',
+    'budgets.incomeSection': 'Ingresos',
+    'budgets.expenseSection': 'Gastos',
     'categories.newOption': '+ Nueva categoría…',
     'categories.newPlaceholder': 'Nombre de la categoría',
 
@@ -212,6 +214,8 @@ export const translations = {
     'budgets.monthlyBudget': 'Monthly budget',
     'budgets.kind': 'Kind',
     'budgets.color': 'Color',
+    'budgets.incomeSection': 'Income',
+    'budgets.expenseSection': 'Expenses',
     'categories.newOption': '+ New category…',
     'categories.newPlaceholder': 'Category name',
 
