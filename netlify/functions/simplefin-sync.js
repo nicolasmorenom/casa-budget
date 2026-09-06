@@ -9,6 +9,15 @@
 // merged here. If no startDate is given at all, we do a single call with no
 // date params, which is the "just give me whatever you'd normally give me"
 // behavior (the Bridge's own recent-activity default).
+//
+// Pending transactions get their own extra, date-unbounded request. Per spec
+// a pending transaction's `posted` timestamp may be 0 (it hasn't posted
+// yet), and some server implementations filter `posted >= start-date` —
+// which a 0 timestamp fails, silently dropping currently-pending
+// transactions from any windowed request that also specifies a start-date
+// (which every request here does, since a fully unbounded window isn't
+// possible once history-chunking is in play). Asking once, with no date
+// bounds at all, sidesteps that.
 
 const NINETY_DAYS_SECONDS = 90 * 24 * 60 * 60
 const MAX_CHUNKS = 8 // ~2 years of history in one call; keeps this well inside Netlify's function timeout and SimpleFIN's 24-req/day quota
@@ -43,8 +52,33 @@ export async function handler(event) {
       windows.push([null, null]) // no dates requested — take whatever window the Bridge defaults to
     }
 
+    // accountId -> { ...account fields, txById: Map(transactionId -> transaction) }
+    // Deduping by transaction id here (not just at the end) matters once the
+    // supplemental pending-only fetch below can return the same transaction
+    // a windowed fetch already picked up.
     const accountsById = new Map()
     let errors = []
+
+    function mergeAccounts(accts, { pendingOnly = false } = {}) {
+      for (const acct of accts) {
+        let entry = accountsById.get(acct.id)
+        if (!entry) {
+          entry = { ...acct, txById: new Map() }
+          accountsById.set(acct.id, entry)
+        } else {
+          // Later fetches are closer to "now", so their balance snapshot wins —
+          // except the pending-only supplemental fetch, whose balance figure
+          // isn't tied to the requested date range and shouldn't override it.
+          if (!pendingOnly) {
+            entry.balance = acct.balance
+            entry['available-balance'] = acct['available-balance']
+            entry['balance-date'] = acct['balance-date']
+          }
+        }
+        const txs = pendingOnly ? (acct.transactions || []).filter((t) => t.pending) : acct.transactions || []
+        txs.forEach((t) => entry.txById.set(t.id, t))
+      }
+    }
 
     for (const [winStart, winEnd] of windows) {
       const reqUrl = new URL(baseAccountsUrl)
@@ -63,22 +97,30 @@ export async function handler(event) {
 
       const data = await res.json()
       errors = errors.concat(data.errors || data.errlist || [])
-
-      for (const acct of data.accounts || []) {
-        if (!accountsById.has(acct.id)) {
-          accountsById.set(acct.id, { ...acct, transactions: [...(acct.transactions || [])] })
-        } else {
-          const existing = accountsById.get(acct.id)
-          // Later windows are closer to "now", so their balance snapshot wins.
-          existing.balance = acct.balance
-          existing['available-balance'] = acct['available-balance']
-          existing['balance-date'] = acct['balance-date']
-          existing.transactions.push(...(acct.transactions || []))
-        }
-      }
+      mergeAccounts(data.accounts || [])
     }
 
-    return { statusCode: 200, body: JSON.stringify({ accounts: Array.from(accountsById.values()), errors }) }
+    // Supplemental pending-only fetch, no date bounds — see the note above.
+    // Best-effort: if this one fails, don't fail the whole sync over it.
+    try {
+      const pendingUrl = new URL(baseAccountsUrl)
+      pendingUrl.searchParams.set('pending', '1')
+      const pendingRes = await fetch(pendingUrl.toString(), { headers: { Authorization: authHeader } })
+      if (pendingRes.ok) {
+        const pendingData = await pendingRes.json()
+        mergeAccounts(pendingData.accounts || [], { pendingOnly: true })
+      }
+    } catch {
+      // ignore — historical data above still returns successfully either way
+    }
+
+    const accounts = Array.from(accountsById.values()).map(({ txById, ...acct }) => ({
+      ...acct,
+      transactions: Array.from(txById.values()),
+    }))
+    const pendingCount = accounts.reduce((sum, a) => sum + a.transactions.filter((t) => t.pending).length, 0)
+
+    return { statusCode: 200, body: JSON.stringify({ accounts, errors, pendingCount }) }
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) }
   }

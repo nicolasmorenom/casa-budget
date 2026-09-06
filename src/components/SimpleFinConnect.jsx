@@ -60,7 +60,7 @@ export default function SimpleFinConnect() {
     setStatus('Syncing…')
     try {
       const startDate = new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString()
-      const { accounts: sfAccounts, errors } = await fetchSimplefinData(connection.accessUrl, { startDate })
+      const { accounts: sfAccounts, errors, pendingCount } = await fetchSimplefinData(connection.accessUrl, { startDate })
       let newAccounts = 0
       let newTx = 0
       let settledTx = 0
@@ -94,7 +94,8 @@ export default function SimpleFinConnect() {
       await updateSimplefinLastSync(activeHouseholdId)
       const errNote = errors?.length ? ` (${errors.length} account error(s) reported by SimpleFIN)` : ''
       const settledNote = settledTx > 0 ? `, ${settledTx} pending transaction(s) settled (no duplicates)` : ''
-      setStatus(`Synced: ${newAccounts} new account(s), ${newTx} new transaction(s)${settledNote}.${errNote}`)
+      const pendingNote = ` SimpleFIN currently reports ${pendingCount || 0} pending transaction(s) across your accounts.`
+      setStatus(`Synced: ${newAccounts} new account(s), ${newTx} new transaction(s)${settledNote}.${errNote}${pendingNote}`)
     } catch (err) {
       setError(err.message)
     } finally {
