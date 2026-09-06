@@ -211,12 +211,18 @@ function TransactionRow({ tx, account, category, categories, paidByMember, house
   const [creatingCategory, setCreatingCategory] = useState(false)
 
   return (
-    <div className="ledger-row flex items-center justify-between px-4 py-2.5 gap-3">
+    <div className={`ledger-row flex items-center justify-between px-4 py-2.5 gap-3 ${tx.pending ? 'opacity-70' : ''}`}>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm">{tx.description || 'Transaction'}</p>
+        <p className="truncate text-sm flex items-center gap-1.5">
+          {tx.description || 'Transaction'}
+          {tx.pending && (
+            <span className="shrink-0 text-[10px] uppercase tracking-wide bg-amber-soft text-amber px-1.5 py-0.5 rounded">
+              {t('transactions.pending')}
+            </span>
+          )}
+        </p>
         <p className="text-xs text-ink-soft truncate">
           {formatDate(tx.date)} · {account?.name || t('transactions.unknownAccount')}
-          {tx.pending && ` · ${t('transactions.pending')}`}
           {tx.shared && paidByMember && ` · ${t('transactions.paidBy')} ${paidByMember.displayName}`}
         </p>
       </div>

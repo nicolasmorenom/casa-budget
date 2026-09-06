@@ -109,9 +109,24 @@ recent-activity default. `simplefin-sync` handles this by chunking a
 requested range into consecutive 90-day windows server-side (capped at 8
 chunks, ~2 years, to stay well within Netlify's function timeout and the
 Bridge's 24-requests/day quota) — the Settings page has an "Import" dropdown
-(30 days up to 2 years) so you control how far back a sync reaches. Re-syncing
-never duplicates transactions (dedup is by SimpleFIN transaction id), so it's
-always safe to re-run a longer range later.
+(30 days up to 2 years) so you control how far back a sync reaches.
+
+**On duplicates and pending transactions:** per the SimpleFIN spec, pending
+transactions are excluded unless the request explicitly passes `pending=1`
+(`simplefin-sync` does). A pending transaction gets one id from the bank;
+once it clears, many banks assign it a *new* id — a naive id-only dedup
+would treat that as a second transaction. `upsertTransactionsFromSimpleFin`
+handles this: if an incoming transaction's id doesn't match anything, it
+checks for an existing *pending* transaction on the same account with the
+same amount within 5 days, and updates that one in place (new id, final
+description, `pending: false`) instead of inserting a duplicate. A pending
+transaction's `posted` timestamp may be `0` per spec since it hasn't posted
+yet — `simplefinTransactionDate()` falls back to `transacted_at`, then
+today, to avoid landing on Jan 1 1970. For duplicates already sitting in
+Firestore from before this existed, there's a "Find & remove duplicate
+transactions" button in Settings — conservative by design, it only merges a
+pending stub into its settled twin, never two already-settled transactions
+with the same amount (those could be two real purchases).
 
 The access URL is stored in Firestore at
 `households/{id}/simplefin/connection`, readable/writable only by members of

@@ -50,6 +50,7 @@ export async function handler(event) {
       const reqUrl = new URL(baseAccountsUrl)
       if (winStart) reqUrl.searchParams.set('start-date', String(winStart))
       if (winEnd) reqUrl.searchParams.set('end-date', String(winEnd))
+      reqUrl.searchParams.set('pending', '1') // per spec, pending transactions are excluded unless explicitly requested
 
       const res = await fetch(reqUrl.toString(), { headers: { Authorization: authHeader } })
       if (!res.ok) {

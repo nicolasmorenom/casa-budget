@@ -190,6 +190,15 @@ export function deleteTransaction(householdId, txId) {
 // two same-day, same-amount pendings can't accidentally collapse into one.
 const PENDING_MATCH_WINDOW_DAYS = 5
 
+// A pending transaction's `posted` timestamp may be 0 per the SimpleFIN spec
+// (it hasn't posted yet), which would otherwise turn into a Jan 1 1970 date.
+// Fall back to transacted_at, then to today, in that order.
+function simplefinTransactionDate(t) {
+  const epoch = t.posted || t.transacted_at
+  if (epoch) return new Date(epoch * 1000).toISOString().slice(0, 10)
+  return new Date().toISOString().slice(0, 10)
+}
+
 export async function upsertTransactionsFromSimpleFin(householdId, uid, accountId, transactions, categories = []) {
   const existingSnap = await getDocs(
     query(collection(db, 'households', householdId, 'transactions'), where('accountId', '==', accountId))
@@ -207,7 +216,7 @@ export async function upsertTransactionsFromSimpleFin(householdId, uid, accountI
 
     const description = t.description || t.payee || 'Imported transaction'
     const amount = Number(t.amount)
-    const date = new Date(t.posted * 1000).toISOString().slice(0, 10)
+    const date = simplefinTransactionDate(t)
 
     const matchIndex = pendingCandidates.findIndex((p) => {
       if (p.amount !== amount) return false

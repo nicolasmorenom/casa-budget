@@ -119,9 +119,16 @@ export default function Dashboard() {
               <p className="text-ink-soft text-sm p-4">{t('dashboard.noTransactions')}</p>
             ) : (
               recent.map((tx) => (
-                <div key={tx.id} className="ledger-row flex items-center justify-between px-4 py-2.5">
+                <div key={tx.id} className={`ledger-row flex items-center justify-between px-4 py-2.5 ${tx.pending ? 'opacity-70' : ''}`}>
                   <div className="min-w-0">
-                    <p className="truncate text-sm">{tx.description || 'Transaction'}</p>
+                    <p className="truncate text-sm flex items-center gap-1.5">
+                      {tx.description || 'Transaction'}
+                      {tx.pending && (
+                        <span className="shrink-0 text-[10px] uppercase tracking-wide bg-amber-soft text-amber px-1.5 py-0.5 rounded">
+                          {t('transactions.pending')}
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-ink-soft">{formatDate(tx.date)}</p>
                   </div>
                   <span className={`font-mono-num text-sm ${tx.amount < 0 ? 'text-rust' : 'text-sage'}`}>
