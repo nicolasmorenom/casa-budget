@@ -9,16 +9,36 @@ import {
 } from 'firebase/auth'
 import { auth, googleProvider } from '../lib/firebase'
 
+// This deployment is private to the household — anyone else who signs up gets
+// bounced immediately. Firestore rules enforce the same list server-side (see
+// isAllowedEmail() in firestore.rules), so this isn't just a client-side gate.
+const ALLOWED_EMAILS = ['nicolasm1410@gmail.com', 'n.rodriguez2338@gmail.com']
+
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(undefined) // undefined = loading, null = signed out
+  const [blocked, setBlocked] = useState(false)
 
-  useEffect(() => onAuthStateChanged(auth, setUser), [])
+  useEffect(
+    () =>
+      onAuthStateChanged(auth, (u) => {
+        if (u && !ALLOWED_EMAILS.includes(u.email)) {
+          signOut(auth)
+          setUser(null)
+          setBlocked(true)
+          return
+        }
+        setBlocked(false)
+        setUser(u)
+      }),
+    []
+  )
 
   const value = {
     user,
     loading: user === undefined,
+    blocked,
     signUp: async (email, password, displayName) => {
       const cred = await createUserWithEmailAndPassword(auth, email, password)
       if (displayName) await updateProfile(cred.user, { displayName })

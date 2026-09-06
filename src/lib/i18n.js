@@ -37,6 +37,7 @@ export const translations = {
     'login.or': 'o',
     'login.noAccount': '¿No tienes cuenta? ',
     'login.hasAccount': '¿Ya tienes cuenta? ',
+    'login.blocked': 'Esta aplicación es privada. Esta cuenta no tiene acceso.',
 
     'onboarding.title': 'Configura tu hogar',
     'onboarding.subtitle':
@@ -156,6 +157,7 @@ export const translations = {
     'login.or': 'or',
     'login.noAccount': "Don't have an account? ",
     'login.hasAccount': 'Already have an account? ',
+    'login.blocked': "This app is private. This account doesn't have access.",
 
     'onboarding.title': 'Set up your household',
     'onboarding.subtitle':

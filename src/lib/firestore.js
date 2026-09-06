@@ -172,33 +172,75 @@ export function deleteTransaction(householdId, txId) {
   return deleteDoc(doc(db, 'households', householdId, 'transactions', txId))
 }
 
-// Upsert used by the SimpleFIN sync flow: avoids duplicate transactions on
-// repeated syncs by keying off the SimpleFIN transaction id, and tries to
-// pre-categorize each new transaction against the household's own categories.
+// Upsert used by the SimpleFIN sync flow. Two things make this trickier than a
+// plain id-based dedup:
+//
+// 1. When a transaction is pending, SimpleFIN (like most bank-data APIs) gives
+//    it one id; once it clears, many banks hand it a NEW id. A pure id match
+//    would treat that as a brand-new transaction, producing a duplicate —
+//    this is the most common source of "duplicate transactions" complaints
+//    with any bank sync, not something specific to SimpleFIN.
+// 2. So: an incoming transaction whose id doesn't match anything gets a
+//    second check — is there an existing PENDING transaction on this account
+//    with the same amount, within a few days? If so, treat this as that
+//    transaction settling: update it in place (new id, final description,
+//    pending: false) instead of inserting a new row.
+//
+// Each existing pending transaction can only absorb one incoming update, so
+// two same-day, same-amount pendings can't accidentally collapse into one.
+const PENDING_MATCH_WINDOW_DAYS = 5
+
 export async function upsertTransactionsFromSimpleFin(householdId, uid, accountId, transactions, categories = []) {
   const existingSnap = await getDocs(
     query(collection(db, 'households', householdId, 'transactions'), where('accountId', '==', accountId))
   )
-  const existingSimplefinIds = new Set(
-    existingSnap.docs.map((d) => d.data().simplefinId).filter(Boolean)
-  )
-  const toAdd = transactions.filter((t) => !existingSimplefinIds.has(t.id))
-  await Promise.all(
-    toAdd.map((t) => {
-      const description = t.description || t.payee || 'Imported transaction'
-      const amount = Number(t.amount)
-      return addTransaction(householdId, uid, {
-        accountId,
-        amount,
-        description,
-        date: new Date(t.posted * 1000).toISOString().slice(0, 10),
-        pending: t.pending || false,
-        simplefinId: t.id,
-        categoryId: suggestCategoryId(description, amount, categories),
-      })
+  const existingSimplefinIds = new Set(existingSnap.docs.map((d) => d.data().simplefinId).filter(Boolean))
+  const pendingCandidates = existingSnap.docs
+    .filter((d) => d.data().pending && d.data().simplefinId)
+    .map((d) => ({ id: d.id, ...d.data() }))
+
+  let added = 0
+  let settled = 0
+
+  for (const t of transactions) {
+    if (existingSimplefinIds.has(t.id)) continue // already have this exact id
+
+    const description = t.description || t.payee || 'Imported transaction'
+    const amount = Number(t.amount)
+    const date = new Date(t.posted * 1000).toISOString().slice(0, 10)
+
+    const matchIndex = pendingCandidates.findIndex((p) => {
+      if (p.amount !== amount) return false
+      const daysApart = Math.abs(new Date(p.date) - new Date(date)) / 86400000
+      return daysApart <= PENDING_MATCH_WINDOW_DAYS
     })
-  )
-  return toAdd.length
+
+    if (matchIndex !== -1) {
+      const match = pendingCandidates[matchIndex]
+      pendingCandidates.splice(matchIndex, 1) // don't let another incoming row match the same pending doc
+      await updateTransaction(householdId, match.id, {
+        simplefinId: t.id,
+        description,
+        date,
+        pending: t.pending || false,
+      })
+      settled++
+      continue
+    }
+
+    await addTransaction(householdId, uid, {
+      accountId,
+      amount,
+      description,
+      date,
+      pending: t.pending || false,
+      simplefinId: t.id,
+      categoryId: suggestCategoryId(description, amount, categories),
+    })
+    added++
+  }
+
+  return { added, settled }
 }
 
 // ---------- SimpleFIN connection (per household) ----------
@@ -225,4 +267,43 @@ export function updateSimplefinLastSync(householdId) {
 
 export function deleteSimplefinConnection(householdId) {
   return deleteDoc(doc(db, 'households', householdId, 'simplefin', 'connection'))
+}
+
+// One-time cleanup for duplicates left over from before the pending/posted
+// matching above existed. Deliberately conservative: only removes a pending
+// transaction when a DIFFERENT, already-settled (non-pending) transaction on
+// the same account matches its amount within the window — that specific
+// pending-stub-plus-settled-twin pattern is the one this bug actually
+// produces. It never touches two settled transactions with the same amount,
+// since those could genuinely be two separate purchases.
+export async function findAndRemoveDuplicates(householdId) {
+  const snap = await getDocs(collection(db, 'households', householdId, 'transactions'))
+  const all = snap.docs.map((d) => ({ id: d.id, ref: d.ref, ...d.data() }))
+
+  const byAccount = {}
+  all.forEach((tx) => {
+    ;(byAccount[tx.accountId] ||= []).push(tx)
+  })
+
+  let removed = 0
+  for (const accountTx of Object.values(byAccount)) {
+    const settled = accountTx.filter((tx) => !tx.pending)
+    const claimedSettledIds = new Set()
+    const pending = accountTx.filter((tx) => tx.pending)
+
+    for (const p of pending) {
+      const match = settled.find(
+        (s) =>
+          !claimedSettledIds.has(s.id) &&
+          s.amount === p.amount &&
+          Math.abs(new Date(s.date) - new Date(p.date)) / 86400000 <= PENDING_MATCH_WINDOW_DAYS
+      )
+      if (match) {
+        claimedSettledIds.add(match.id)
+        await deleteDoc(p.ref)
+        removed++
+      }
+    }
+  }
+  return removed
 }

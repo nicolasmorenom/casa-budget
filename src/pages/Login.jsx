@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useLanguage } from '../contexts/LanguageContext'
 
 export default function Login() {
-  const { signIn, signUp, signInWithGoogle } = useAuth()
+  const { signIn, signUp, signInWithGoogle, blocked } = useAuth()
   const { t, lang, setLang } = useLanguage()
   const [mode, setMode] = useState('signin') // 'signin' | 'signup'
   const [email, setEmail] = useState('')
@@ -41,6 +41,10 @@ export default function Login() {
           <p className="font-display text-4xl leading-none text-amber -mt-1">Budget</p>
           <p className="text-ink-soft mt-3 text-sm">{t('login.tagline')}</p>
         </div>
+
+        {blocked && (
+          <p className="bg-rust-soft text-rust text-sm rounded-lg px-4 py-3 mb-4 text-center">{t('login.blocked')}</p>
+        )}
 
         <div className="bg-paper-raised border border-line rounded-lg p-6">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">

@@ -10,6 +10,7 @@ import {
   addAccount,
   updateAccount,
   upsertTransactionsFromSimpleFin,
+  findAndRemoveDuplicates,
 } from '../lib/firestore'
 
 const HISTORY_OPTIONS = [
@@ -62,6 +63,7 @@ export default function SimpleFinConnect() {
       const { accounts: sfAccounts, errors } = await fetchSimplefinData(connection.accessUrl, { startDate })
       let newAccounts = 0
       let newTx = 0
+      let settledTx = 0
 
       for (const sfAccount of sfAccounts) {
         let localAccount = accounts.find((a) => a.simplefinAccountId === sfAccount.id)
@@ -78,7 +80,7 @@ export default function SimpleFinConnect() {
         } else {
           await updateAccount(activeHouseholdId, localAccount.id, { balance: sfAccount.balance })
         }
-        const added = await upsertTransactionsFromSimpleFin(
+        const { added, settled } = await upsertTransactionsFromSimpleFin(
           activeHouseholdId,
           user.uid,
           localAccount.id,
@@ -86,11 +88,13 @@ export default function SimpleFinConnect() {
           categories
         )
         newTx += added
+        settledTx += settled
       }
 
       await updateSimplefinLastSync(activeHouseholdId)
       const errNote = errors?.length ? ` (${errors.length} account error(s) reported by SimpleFIN)` : ''
-      setStatus(`Synced: ${newAccounts} new account(s), ${newTx} new transaction(s).${errNote}`)
+      const settledNote = settledTx > 0 ? `, ${settledTx} pending transaction(s) settled (no duplicates)` : ''
+      setStatus(`Synced: ${newAccounts} new account(s), ${newTx} new transaction(s)${settledNote}.${errNote}`)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -102,6 +106,19 @@ export default function SimpleFinConnect() {
     await deleteSimplefinConnection(activeHouseholdId)
     setConnection(null)
     setStatus('')
+  }
+
+  async function handleDedupe() {
+    setBusy(true)
+    setStatus('Checking for duplicates…')
+    try {
+      const removed = await findAndRemoveDuplicates(activeHouseholdId)
+      setStatus(removed > 0 ? `Removed ${removed} duplicate transaction(s).` : 'No duplicates found.')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   if (connection === undefined) return null
@@ -164,6 +181,9 @@ export default function SimpleFinConnect() {
           Re-syncing never creates duplicates — it's safe to run a longer range again if you need older
           transactions than your first import covered.
         </p>
+        <button onClick={handleDedupe} disabled={busy} className="text-xs text-ink-soft hover:underline mt-1 disabled:opacity-50">
+          Find &amp; remove duplicate transactions
+        </button>
         </>
       )}
 
