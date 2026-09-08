@@ -21,6 +21,14 @@ const HISTORY_OPTIONS = [
   { label: '2 years', days: 730 },
 ]
 
+// SimpleFIN account-level errors can be plain strings or, in some bridge
+// implementations, objects — normalize either into something readable.
+function formatSyncError(e) {
+  if (typeof e === 'string') return e
+  if (e && typeof e === 'object') return e.error || e.message || e.detail || JSON.stringify(e)
+  return String(e)
+}
+
 export default function SimpleFinConnect() {
   const { user } = useAuth()
   const { activeHouseholdId, accounts, categories } = useHousehold()
@@ -28,6 +36,7 @@ export default function SimpleFinConnect() {
   const [setupToken, setSetupToken] = useState('')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [syncErrors, setSyncErrors] = useState([])
   const [busy, setBusy] = useState(false)
   const [historyDays, setHistoryDays] = useState(90)
 
@@ -56,11 +65,13 @@ export default function SimpleFinConnect() {
 
   async function handleSync() {
     setError('')
+    setSyncErrors([])
     setBusy(true)
     setStatus('Syncing…')
     try {
       const startDate = new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString()
       const { accounts: sfAccounts, errors, pendingCount } = await fetchSimplefinData(connection.accessUrl, { startDate })
+      setSyncErrors(errors || [])
       let newAccounts = 0
       let newTx = 0
       let settledTx = 0
@@ -92,10 +103,9 @@ export default function SimpleFinConnect() {
       }
 
       await updateSimplefinLastSync(activeHouseholdId)
-      const errNote = errors?.length ? ` (${errors.length} account error(s) reported by SimpleFIN)` : ''
       const settledNote = settledTx > 0 ? `, ${settledTx} pending transaction(s) settled (no duplicates)` : ''
       const pendingNote = ` SimpleFIN currently reports ${pendingCount || 0} pending transaction(s) across your accounts.`
-      setStatus(`Synced: ${newAccounts} new account(s), ${newTx} new transaction(s)${settledNote}.${errNote}${pendingNote}`)
+      setStatus(`Synced: ${newAccounts} new account(s), ${newTx} new transaction(s)${settledNote}.${pendingNote}`)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -189,6 +199,16 @@ export default function SimpleFinConnect() {
       )}
 
       {status && <p className="text-sm text-sage mt-3">{status}</p>}
+      {syncErrors.length > 0 && (
+        <div className="bg-amber-soft text-amber text-sm rounded px-3 py-2 mt-2">
+          <p className="font-medium mb-1">SimpleFIN reported {syncErrors.length} account error(s):</p>
+          <ul className="list-disc list-inside space-y-0.5">
+            {syncErrors.map((e, i) => (
+              <li key={i}>{formatSyncError(e)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {error && <p className="text-sm text-rust mt-3">{error}</p>}
     </div>
   )
