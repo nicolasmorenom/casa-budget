@@ -2,13 +2,15 @@
 // Runs server-side so the Basic Auth credentials embedded in the access URL
 // never sit in browser devtools network logs beyond this app's own request.
 //
-// SimpleFIN Bridge caps any single /accounts request to a 90-day start/end
-// window (enforced on their end, not just documented as a suggestion) — see
-// https://beta-bridge.simplefin.org/info/developers. So a request for a
-// year of history has to be split into consecutive <=90-day windows and
-// merged here. If no startDate is given at all, we do a single call with no
-// date params, which is the "just give me whatever you'd normally give me"
-// behavior (the Bridge's own recent-activity default).
+// The Bridge's own error responses are the source of truth on window size —
+// it told us directly ("Requested date range exceeds recommended range of
+// 45 days. In the future, this may be capped.") that 45 days is the current
+// number, superseding the 90-day figure this comment used to cite from
+// secondhand reports. So a request for a year of history has to be split
+// into consecutive <=45-day windows and merged here. If no startDate is
+// given at all, we do a single call with no date params, which is the "just
+// give me whatever you'd normally give me" behavior (the Bridge's own
+// recent-activity default).
 //
 // Pending transactions get their own extra, date-unbounded request. Per spec
 // a pending transaction's `posted` timestamp may be 0 (it hasn't posted
@@ -19,8 +21,8 @@
 // possible once history-chunking is in play). Asking once, with no date
 // bounds at all, sidesteps that.
 
-const NINETY_DAYS_SECONDS = 90 * 24 * 60 * 60
-const MAX_CHUNKS = 8 // ~2 years of history in one call; keeps this well inside Netlify's function timeout and SimpleFIN's 24-req/day quota
+const MAX_WINDOW_SECONDS = 45 * 24 * 60 * 60
+const MAX_CHUNKS = 16 // ~2 years of history in one call, at 45 days/chunk
 
 export async function handler(event) {
   if (event.httpMethod !== 'POST') {
@@ -44,7 +46,7 @@ export async function handler(event) {
     if (startTs) {
       let winStart = startTs
       while (winStart < nowTs && windows.length < MAX_CHUNKS) {
-        const winEnd = Math.min(winStart + NINETY_DAYS_SECONDS, nowTs)
+        const winEnd = Math.min(winStart + MAX_WINDOW_SECONDS, nowTs)
         windows.push([winStart, winEnd])
         winStart = winEnd
       }
