@@ -10,6 +10,8 @@ function useNavItems(t) {
     { to: '/transactions', label: t('nav.transactions') },
     { to: '/accounts', label: t('nav.accounts') },
     { to: '/budgets', label: t('nav.budgets') },
+    { to: '/goals', label: t('nav.goals') },
+    { to: '/bills', label: t('nav.bills') },
     { to: '/settings', label: t('nav.settings') },
   ]
 }

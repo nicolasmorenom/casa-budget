@@ -130,6 +130,7 @@ export function addCategory(householdId, category) {
     kind: category.kind || 'expense',
     color: category.color || '#3c4d61',
     monthlyBudget: Number(category.monthlyBudget) || 0,
+    essential: !!category.essential,
   })
 }
 
@@ -315,4 +316,58 @@ export async function findAndRemoveDuplicates(householdId) {
     }
   }
   return removed
+}
+
+// ---------- Goals ----------
+
+export function subscribeGoals(householdId, cb) {
+  const q = query(collection(db, 'households', householdId, 'goals'), orderBy('createdAt'))
+  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+}
+
+export function addGoal(householdId, goal) {
+  return addDoc(collection(db, 'households', householdId, 'goals'), {
+    name: goal.name,
+    targetAmount: Number(goal.targetAmount) || 0,
+    savedAmount: Number(goal.savedAmount) || 0,
+    targetDate: goal.targetDate || null,
+    color: goal.color || '#3f6b52',
+    createdAt: serverTimestamp(),
+  })
+}
+
+export function updateGoal(householdId, goalId, patch) {
+  return updateDoc(doc(db, 'households', householdId, 'goals', goalId), patch)
+}
+
+export function deleteGoal(householdId, goalId) {
+  return deleteDoc(doc(db, 'households', householdId, 'goals', goalId))
+}
+
+// ---------- Bills & subscriptions ----------
+
+export function subscribeBills(householdId, cb) {
+  const q = query(collection(db, 'households', householdId, 'bills'), orderBy('dueDay'))
+  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+}
+
+export function addBill(householdId, bill) {
+  return addDoc(collection(db, 'households', householdId, 'bills'), {
+    name: bill.name,
+    amount: Number(bill.amount) || 0,
+    dueDay: Math.min(31, Math.max(1, Number(bill.dueDay) || 1)),
+    categoryId: bill.categoryId || null,
+    type: bill.type === 'subscription' ? 'subscription' : 'bill',
+    active: true,
+    paidMonths: [],
+    createdAt: serverTimestamp(),
+  })
+}
+
+export function updateBill(householdId, billId, patch) {
+  return updateDoc(doc(db, 'households', householdId, 'bills', billId), patch)
+}
+
+export function deleteBill(householdId, billId) {
+  return deleteDoc(doc(db, 'households', householdId, 'bills', billId))
 }

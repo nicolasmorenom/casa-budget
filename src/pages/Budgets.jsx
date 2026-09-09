@@ -102,6 +102,16 @@ function BudgetRow({ category, spent, householdId, t, kind }) {
         <span className="flex items-center gap-2 font-medium">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: category.color }} />
           {category.name}
+          {kind === 'expense' && (
+            <button
+              onClick={() => updateCategory(householdId, category.id, { essential: !category.essential })}
+              className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                category.essential ? 'bg-sage-soft text-sage' : 'bg-amber-soft text-amber'
+              }`}
+            >
+              {category.essential ? t('budgets.essential') : t('budgets.discretionary')}
+            </button>
+          )}
         </span>
         <div className="flex items-center gap-2 font-mono-num text-sm">
           <span className={over ? 'text-rust' : ''}>{formatMoney(spent)}</span>

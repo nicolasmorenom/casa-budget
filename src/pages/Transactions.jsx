@@ -5,6 +5,7 @@ import { useLanguage } from '../contexts/LanguageContext'
 import { usePeriod } from '../contexts/PeriodContext'
 import { addTransaction, deleteTransaction, updateTransaction } from '../lib/firestore'
 import { suggestCategoryId } from '../lib/categorize'
+import { exportTransactionsCsv } from '../lib/export'
 import { formatMoney, formatDate, isInPeriod } from '../lib/format'
 import PeriodSwitcher from '../components/PeriodSwitcher'
 import CategoryCreateInline from '../components/CategoryCreateInline'
@@ -120,6 +121,12 @@ export default function Transactions() {
             {t('transactions.autoCategorize')} ({uncategorizedCount})
           </button>
         )}
+        <button
+          onClick={() => exportTransactionsCsv(filtered, { categoryMap, accountMap, memberMap })}
+          className="border border-line rounded px-3 py-2 text-sm text-ink-soft hover:bg-paper-raised"
+        >
+          {t('transactions.export')}
+        </button>
         <button
           onClick={() => setShowForm((s) => !s)}
           className="bg-ink text-paper rounded px-4 py-2 text-sm font-medium hover:bg-ink-soft transition-colors ml-auto"

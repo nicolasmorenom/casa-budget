@@ -41,6 +41,12 @@ service cloud.firestore {
       match /simplefin/{docId} {
         allow read, write: if isHouseholdMember(householdId);
       }
+      match /goals/{goalId} {
+        allow read, write: if isHouseholdMember(householdId);
+      }
+      match /bills/{billId} {
+        allow read, write: if isHouseholdMember(householdId);
+      }
     }
   }
 }

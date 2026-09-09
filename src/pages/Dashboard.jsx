@@ -6,8 +6,28 @@ import { usePeriod } from '../contexts/PeriodContext'
 import { formatMoney, formatDate, isInPeriod } from '../lib/format'
 import PeriodSwitcher from '../components/PeriodSwitcher'
 
+const ESSENTIAL_NAME_MATCH = /arriendo|rent|hipoteca|mortgage|mercado|grocer|servicio|utilit|transporte|transport|salud|health|seguro|insurance|housing|vivienda/i
+const NON_ESSENTIAL_NAME_MATCH = /restaurant|dining|entreten|entertainment|fun/i
+
+// Respects an explicit essential flag on the category (including an explicit
+// false) if the category was created after that field existed; falls back to
+// keyword matching on the category name for older data — same philosophy as
+// the transaction auto-categorizer.
+function isEssentialCategory(category) {
+  if (!category) return false
+  if (typeof category.essential === 'boolean') return category.essential
+  if (NON_ESSENTIAL_NAME_MATCH.test(category.name)) return false
+  return ESSENTIAL_NAME_MATCH.test(category.name)
+}
+
+function shiftPeriodString(period, delta) {
+  const [y, m] = period.split('-').map(Number)
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export default function Dashboard() {
-  const { accounts, categories, transactions, members } = useHousehold()
+  const { accounts, categories, transactions, members, goals, bills } = useHousehold()
   const { t } = useLanguage()
   const { period } = usePeriod()
 
@@ -61,6 +81,55 @@ export default function Dashboard() {
 
   const recent = transactions.slice(0, 8)
 
+  const essentialTotal = useMemo(() => {
+    const categoryMapLocal = categoryMap
+    return periodTx
+      .filter((tx) => tx.amount < 0 && isEssentialCategory(categoryMapLocal[tx.categoryId]))
+      .reduce((s, tx) => s + Math.abs(tx.amount), 0)
+  }, [periodTx, categoryMap])
+  const discretionaryTotal = Math.max(0, expenses - essentialTotal)
+
+  const insights = useMemo(() => {
+    const lines = []
+    const previousPeriod = shiftPeriodString(period, -1)
+    const previousPeriodTx = transactions.filter((tx) => isInPeriod(tx.date, previousPeriod))
+
+    const diningCategory = categories.find((c) => /dining|restaurant/i.test(c.name))
+    if (diningCategory) {
+      const current = periodTx
+        .filter((tx) => tx.categoryId === diningCategory.id && tx.amount < 0)
+        .reduce((s, tx) => s + Math.abs(tx.amount), 0)
+      const previous = previousPeriodTx
+        .filter((tx) => tx.categoryId === diningCategory.id && tx.amount < 0)
+        .reduce((s, tx) => s + Math.abs(tx.amount), 0)
+      if (previous > 0) {
+        const changePct = Math.round(((current - previous) / previous) * 100)
+        if (Math.abs(changePct) >= 10) {
+          lines.push(
+            `${diningCategory.name} ${changePct > 0 ? '+' : ''}${changePct}% ${t('dashboard.insightVsLastMonth')}`
+          )
+        }
+      }
+    }
+
+    const activeSubs = bills.filter((b) => b.type === 'subscription' && b.active !== false)
+    if (activeSubs.length > 0) {
+      const subsTotal = activeSubs.reduce((s, b) => s + b.amount, 0)
+      lines.push(`${t('dashboard.insightSubscriptionsLabel')} ${formatMoney(subsTotal)}/mo`)
+    }
+
+    if (goals.length > 0) {
+      const best = goals
+        .map((g) => ({ ...g, pct: g.targetAmount > 0 ? (g.savedAmount / g.targetAmount) * 100 : 0 }))
+        .sort((a, b) => b.pct - a.pct)[0]
+      if (best.pct > 0) {
+        lines.push(`${best.name}: ${Math.round(best.pct)}% ${t('dashboard.insightGoalProgress')}`)
+      }
+    }
+
+    return lines.slice(0, 3)
+  }, [period, periodTx, transactions, categories, bills, goals, t])
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -77,6 +146,37 @@ export default function Dashboard() {
         <SummaryCard label={t('dashboard.spent')} value={expenses} tone="rust" />
         <SummaryCard label={t('dashboard.remaining')} value={remaining} tone={remaining < 0 ? 'rust' : 'sage'} />
       </div>
+
+      {expenses > 0 && (
+        <section>
+          <h2 className="font-display text-xl mb-3">{t('dashboard.essentialsTitle')}</h2>
+          <div className="h-3 rounded-full overflow-hidden flex bg-line">
+            <div style={{ width: `${(essentialTotal / expenses) * 100}%`, backgroundColor: 'var(--color-sage)' }} />
+            <div style={{ width: `${(discretionaryTotal / expenses) * 100}%`, backgroundColor: 'var(--color-amber)' }} />
+          </div>
+          <div className="flex justify-between text-xs text-ink-soft mt-2">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--color-sage)' }} />
+              {t('dashboard.essentialsEssential')}: {formatMoney(essentialTotal)}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--color-amber)' }} />
+              {t('dashboard.essentialsDiscretionary')}: {formatMoney(discretionaryTotal)}
+            </span>
+          </div>
+        </section>
+      )}
+
+      {insights.length > 0 && (
+        <section className="bg-amber-soft rounded-lg p-4">
+          <p className="text-sm font-medium text-amber mb-2">{t('dashboard.insightsTitle')}</p>
+          <ul className="text-sm flex flex-col gap-1">
+            {insights.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <section>

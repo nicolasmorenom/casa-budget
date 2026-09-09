@@ -24,6 +24,21 @@ Netlify (including two Netlify Functions for the SimpleFIN proxy).
   member; the Dashboard turns that into a simple fair-share breakdown
   (who's owed, who owes) — not a full settle-up ledger, just enough to see
   at a glance
+- Savings goals (Goals page): target amount, running saved amount with
+  add/withdraw, optional deadline with a computed "amount needed per month"
+- Recurring bills & subscriptions (Bills page): due-day tracking with
+  overdue/due-soon badges, mark-paid per month, and automatic subscription
+  detection from the last 90 days of transactions (same description
+  recurring across ≥2 distinct months with <15% amount variance gets
+  suggested, not auto-added)
+- Essential vs. discretionary spending split on the Dashboard, and a
+  per-category toggle on Budgets to mark which is which — falls back to
+  keyword matching on the category name for categories created before this
+  existed
+- A small rule-based insights card on the Dashboard (dining trend vs. last
+  month, monthly subscription cost, best-progress savings goal) — same
+  "suggest, never block" philosophy as the auto-categorizer
+- CSV export of whatever's currently filtered on the Transactions page
 - A floating "+" quick-add button on every page for logging an expense in a
   few taps, without navigating to the Transactions page first
 - Bilingual UI (Spanish default, English toggle) via a small `t()` helper in
@@ -142,9 +157,11 @@ users/{uid}                          { householdIds: [...] }
 households/{id}                      { name, memberUids: [...], inviteCode }
 households/{id}/members/{uid}        { displayName, email }
 households/{id}/accounts/{aid}       { name, type, balance, currency, simplefinAccountId }
-households/{id}/categories/{cid}     { name, kind: income|expense, color, monthlyBudget }
+households/{id}/categories/{cid}     { name, kind: income|expense, color, monthlyBudget, essential }
 households/{id}/transactions/{tid}   { accountId, categoryId, amount, description, date, simplefinId, paidBy, shared }
 households/{id}/simplefin/connection { accessUrl, lastSyncedAt }
+households/{id}/goals/{gid}          { name, targetAmount, savedAmount, targetDate, color }
+households/{id}/bills/{bid}          { name, amount, dueDay, categoryId, type: bill|subscription, active, paidMonths: [...] }
 ```
 
 Budgets aren't a separate collection — a category's `monthlyBudget` is

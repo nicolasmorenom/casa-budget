@@ -10,6 +10,8 @@ import Dashboard from './pages/Dashboard'
 import Accounts from './pages/Accounts'
 import Transactions from './pages/Transactions'
 import Budgets from './pages/Budgets'
+import Goals from './pages/Goals'
+import Bills from './pages/Bills'
 import Settings from './pages/Settings'
 
 function Gate() {
@@ -41,6 +43,8 @@ function HouseholdGate() {
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="/budgets" element={<Budgets />} />
+          <Route path="/goals" element={<Goals />} />
+          <Route path="/bills" element={<Bills />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

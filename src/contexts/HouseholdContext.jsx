@@ -7,6 +7,8 @@ import {
   subscribeCategories,
   subscribeTransactions,
   subscribeMembers,
+  subscribeGoals,
+  subscribeBills,
 } from '../lib/firestore'
 
 const HouseholdContext = createContext(null)
@@ -20,6 +22,8 @@ export function HouseholdProvider({ children }) {
   const [categories, setCategories] = useState([])
   const [transactions, setTransactions] = useState([])
   const [members, setMembers] = useState([])
+  const [goals, setGoals] = useState([])
+  const [bills, setBills] = useState([])
 
   useEffect(() => {
     if (!user) return
@@ -36,6 +40,8 @@ export function HouseholdProvider({ children }) {
       setCategories([])
       setTransactions([])
       setMembers([])
+      setGoals([])
+      setBills([])
       return
     }
     const unsubs = [
@@ -44,6 +50,8 @@ export function HouseholdProvider({ children }) {
       subscribeCategories(activeHouseholdId, setCategories),
       subscribeTransactions(activeHouseholdId, setTransactions),
       subscribeMembers(activeHouseholdId, setMembers),
+      subscribeGoals(activeHouseholdId, setGoals),
+      subscribeBills(activeHouseholdId, setBills),
     ]
     return () => unsubs.forEach((u) => u())
   }, [activeHouseholdId])
@@ -59,8 +67,10 @@ export function HouseholdProvider({ children }) {
       categories,
       transactions,
       members,
+      goals,
+      bills,
     }),
-    [userDoc, activeHouseholdId, household, accounts, categories, transactions, members]
+    [userDoc, activeHouseholdId, household, accounts, categories, transactions, members, goals, bills]
   )
 
   return <HouseholdContext.Provider value={value}>{children}</HouseholdContext.Provider>
