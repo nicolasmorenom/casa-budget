@@ -1,52 +1,28 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function isSignedIn() {
+    // This is a single-household, two-person app — there's no per-document
+    // ownership model to enforce beyond "is this one of the two family
+    // members." Every collection below was confirmed against every
+    // collection(db, ...) / doc(db, ...) call in src/pages/Dashboard.js and
+    // src/App.js, so this list is exhaustive as of this app's current code.
+    function isFamily() {
       return request.auth != null &&
-        request.auth.token.email in ['nicolasm1410@gmail.com', 'n.rodriguez2338@gmail.com'];
+        request.auth.token.email in [
+          "nicolasm1410@gmail.com",
+          "n.rodriguez2338@gmail.com"
+        ];
     }
-
-    function isHouseholdMember(householdId) {
-      return isSignedIn() &&
-        request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.memberUids;
-    }
-
-    match /users/{uid} {
-      allow read, write: if isSignedIn() && request.auth.uid == uid;
-    }
-
-    match /households/{householdId} {
-      allow get: if isHouseholdMember(householdId);
-      // Needed so a user can look up a household by invite code before they're a member.
-      // Household docs only contain a name, invite code, and member uid list, so this is
-      // an acceptable trade-off for a personal/family app — harden with a callable
-      // function if you need to hide invite codes from other signed-in users.
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && request.auth.uid in request.resource.data.memberUids;
-      allow update: if isHouseholdMember(householdId);
-
-      match /accounts/{accountId} {
-        allow read, write: if isHouseholdMember(householdId);
-      }
-      match /members/{uid} {
-        allow read, write: if isHouseholdMember(householdId);
-      }
-      match /categories/{categoryId} {
-        allow read, write: if isHouseholdMember(householdId);
-      }
-      match /transactions/{transactionId} {
-        allow read, write: if isHouseholdMember(householdId);
-      }
-      match /simplefin/{docId} {
-        allow read, write: if isHouseholdMember(householdId);
-      }
-      match /goals/{goalId} {
-        allow read, write: if isHouseholdMember(householdId);
-      }
-      match /bills/{billId} {
-        allow read, write: if isHouseholdMember(householdId);
-      }
-    }
+    match /users/{userId}       { allow read, write: if isFamily(); }
+    match /transactions/{docId} { allow read, write: if isFamily(); }
+    match /goals/{docId}        { allow read, write: if isFamily(); }
+    match /bills/{docId}        { allow read, write: if isFamily(); }
+    match /categories/{docId}   { allow read, write: if isFamily(); }
+    match /budgetPlans/{docId}  { allow read, write: if isFamily(); }
+    match /accounts/{docId}     { allow read, write: if isFamily(); }
+    // Not read or written anywhere in the current app — kept in case a
+    // future settings feature needs it. Harmless to leave; delete this
+    // block if you'd rather rules exactly mirror what's actually used.
+    match /settings/{docId}     { allow read, write: if isFamily(); }
   }
 }
