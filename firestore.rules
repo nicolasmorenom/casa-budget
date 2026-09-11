@@ -1,28 +1,163 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // This is a single-household, two-person app — there's no per-document
-    // ownership model to enforce beyond "is this one of the two family
-    // members." Every collection below was confirmed against every
-    // collection(db, ...) / doc(db, ...) call in src/pages/Dashboard.js and
-    // src/App.js, so this list is exhaustive as of this app's current code.
-    function isFamily() {
-      return request.auth != null &&
-        request.auth.token.email in [
-          "nicolasm1410@gmail.com",
-          "n.rodriguez2338@gmail.com"
-        ];
+
+    // ── Shared basics ──────────────────────────────────────────────────────
+
+    // Any authenticated user, no email restriction. Used for the now-public
+    // flat app below, and for self-only access to a user's own profile doc
+    // (which both apps share — see the users/{uid} block).
+    function isSignedIn() {
+      return request.auth != null;
     }
-    match /users/{userId}       { allow read, write: if isFamily(); }
-    match /transactions/{docId} { allow read, write: if isFamily(); }
-    match /goals/{docId}        { allow read, write: if isFamily(); }
-    match /bills/{docId}        { allow read, write: if isFamily(); }
-    match /categories/{docId}   { allow read, write: if isFamily(); }
-    match /budgetPlans/{docId}  { allow read, write: if isFamily(); }
-    match /accounts/{docId}     { allow read, write: if isFamily(); }
-    // Not read or written anywhere in the current app — kept in case a
-    // future settings feature needs it. Harmless to leave; delete this
-    // block if you'd rather rules exactly mirror what's actually used.
-    match /settings/{docId}     { allow read, write: if isFamily(); }
+
+    // The multi-household scaffold stays restricted to the two of you —
+    // going public applies only to the other (flat) app in this project.
+    function isFamilyMember() {
+      return isSignedIn() &&
+        request.auth.token.email in ['nicolasm1410@gmail.com', 'n.rodriguez2338@gmail.com'];
+    }
+
+    function isScaffoldHouseholdMember(householdId) {
+      return isFamilyMember() &&
+        request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.memberUids;
+    }
+
+    // For the flat app's top-level collections: householdId here is the
+    // budgetHouseholds document id (which is itself the invite code — see
+    // that collection's rules below for why).
+    function isBudgetHouseholdMember(householdId) {
+      return isSignedIn() &&
+        householdId != null &&
+        request.auth.uid in get(/databases/$(database)/documents/budgetHouseholds/$(householdId)).data.memberUids;
+    }
+
+    // Shared by both apps — the multi-household scaffold stores
+    // { householdIds }, the flat app stores { name, email, photo,
+    // lastLogin, householdId }. Both write with merge:true on their own
+    // fields, so one doc per uid safely holds both without either app
+    // clobbering the other's data. No email whitelist here on purpose:
+    // this is self-access only (you can only touch your own uid's doc),
+    // so it's safe to leave open to anyone signed in — otherwise a new
+    // public user of the flat app couldn't even write their own profile.
+    match /users/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ── Multi-household scaffold (nested under households/{id}, family-only) ──
+
+    match /households/{householdId} {
+      allow get: if isScaffoldHouseholdMember(householdId);
+      // Needed so a user can look up a household by invite code before they're a member.
+      // Household docs only contain a name, invite code, and member uid list, so this is
+      // an acceptable trade-off for a personal/family app — harden with a callable
+      // function if you need to hide invite codes from other signed-in users.
+      allow list: if isFamilyMember();
+      allow create: if isFamilyMember() && request.auth.uid in request.resource.data.memberUids;
+      // Two ways to legitimately update this doc: you're already a member
+      // (general edits), or you're joining — memberUids in the proposed
+      // write is exactly the current array with your own uid appended, and
+      // no other field changed. (This was previously just
+      // isScaffoldHouseholdMember(householdId), which required already
+      // being a member to update at all — meaning joining via invite code
+      // could never actually succeed. Fixed here.)
+      allow update: if isScaffoldHouseholdMember(householdId) || (
+        isFamilyMember() &&
+        resource.data.memberUids is list &&
+        request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid]) &&
+        request.resource.data.name == resource.data.name &&
+        request.resource.data.inviteCode == resource.data.inviteCode
+      );
+
+      match /accounts/{accountId} {
+        allow read, write: if isScaffoldHouseholdMember(householdId);
+      }
+      match /members/{uid} {
+        allow read, write: if isScaffoldHouseholdMember(householdId);
+      }
+      match /categories/{categoryId} {
+        allow read, write: if isScaffoldHouseholdMember(householdId);
+      }
+      match /transactions/{transactionId} {
+        allow read, write: if isScaffoldHouseholdMember(householdId);
+      }
+      match /simplefin/{docId} {
+        allow read, write: if isScaffoldHouseholdMember(householdId);
+      }
+      match /goals/{goalId} {
+        allow read, write: if isScaffoldHouseholdMember(householdId);
+      }
+      match /bills/{billId} {
+        allow read, write: if isScaffoldHouseholdMember(householdId);
+      }
+    }
+
+    // ── Flat app households (top-level, now genuinely public) ─────────────
+
+    // The document id here IS the 6-character invite code (see
+    // src/households.js) — deliberately, so "join by code" can be a plain
+    // `get` by exact id rather than a `where(...)` query. There is
+    // intentionally NO `allow list` on this collection: without it, nobody
+    // can enumerate other households or discover their codes by browsing —
+    // you can only ever reach a household doc if you already have its code.
+    // (Same trade-off as any "anyone with the link" sharing model: knowing
+    // the code is enough to view basic info, which is what makes joining
+    // possible at all without a server-side function.)
+    match /budgetHouseholds/{householdId} {
+      allow get: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+        householdId == request.resource.data.code &&
+        request.auth.uid in request.resource.data.memberUids &&
+        request.resource.data.memberUids.size() == 1 &&
+        request.resource.data.memberEmails.size() == 1;
+
+      // Two ways to legitimately update this doc:
+      // 1. You're already a member (e.g. a future rename/settings feature).
+      // 2. You're joining: the new memberUids/memberEmails are exactly the
+      //    old arrays with your own uid/email appended, and nothing else
+      //    about the document changed. This lets a non-member add
+      //    themselves without a service-account/Admin SDK setup, while
+      //    still blocking edits to anyone else's membership or to the
+      //    household's name.
+      allow update: if isBudgetHouseholdMember(householdId) || (
+        isSignedIn() &&
+        resource.data.memberUids is list &&
+        resource.data.memberEmails is list &&
+        request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid]) &&
+        request.resource.data.memberEmails == resource.data.memberEmails.concat([request.auth.token.email]) &&
+        request.resource.data.name == resource.data.name &&
+        request.resource.data.code == resource.data.code
+      );
+    }
+
+    match /transactions/{docId} {
+      allow read, update, delete: if isBudgetHouseholdMember(resource.data.householdId);
+      allow create: if isBudgetHouseholdMember(request.resource.data.householdId);
+    }
+    match /goals/{docId} {
+      allow read, update, delete: if isBudgetHouseholdMember(resource.data.householdId);
+      allow create: if isBudgetHouseholdMember(request.resource.data.householdId);
+    }
+    match /bills/{docId} {
+      allow read, update, delete: if isBudgetHouseholdMember(resource.data.householdId);
+      allow create: if isBudgetHouseholdMember(request.resource.data.householdId);
+    }
+    match /categories/{docId} {
+      allow read, update, delete: if isBudgetHouseholdMember(resource.data.householdId);
+      allow create: if isBudgetHouseholdMember(request.resource.data.householdId);
+    }
+    match /budgetPlans/{docId} {
+      allow read, update, delete: if isBudgetHouseholdMember(resource.data.householdId);
+      allow create: if isBudgetHouseholdMember(request.resource.data.householdId);
+    }
+    match /accounts/{docId} {
+      allow read, update, delete: if isBudgetHouseholdMember(resource.data.householdId);
+      allow create: if isBudgetHouseholdMember(request.resource.data.householdId);
+    }
+    // Deliberately no /settings/{docId} rule — confirmed unused anywhere in
+    // the app's code, and now that it's public, an ungated leftover
+    // collection is a landmine rather than a harmless unused block. Add a
+    // real rule for it if a settings feature actually gets built.
   }
 }

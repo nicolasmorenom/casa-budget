@@ -2,13 +2,9 @@ import React, { useState, useEffect, createContext, useContext } from "react";
 import { auth, googleProvider, db } from "./firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
+import { createHousehold, joinHouseholdByCode, getUserHouseholdId, getHousehold } from "./households";
 import Dashboard from "./pages/Dashboard";
 import "./App.css";
-
-const ALLOWED_EMAILS = [
-  "nicolasm1410@gmail.com",
-  "n.rodriguez2338@gmail.com"
-];
 
 export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -28,7 +24,7 @@ function LoginScreen({ onLogin, error }) {
           </svg>
         </div>
         <h1 className="login-title">Casa Budget</h1>
-        <p className="login-sub">Family finances, together</p>
+        <p className="login-sub">Household finances, together</p>
         {error && <p className="login-error">{error}</p>}
         <button className="google-btn" onClick={onLogin}>
           <svg width="18" height="18" viewBox="0 0 18 18">
@@ -39,7 +35,84 @@ function LoginScreen({ onLogin, error }) {
           </svg>
           Continue with Google
         </button>
-        <p className="login-note">Access restricted to family members only</p>
+        <p className="login-note">Sign in to set up or join a household</p>
+      </div>
+    </div>
+  );
+}
+
+function HouseholdOnboarding({ user, onDone }) {
+  const [mode, setMode] = useState("create");
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(""); setBusy(true);
+    try {
+      const householdId = mode === "create"
+        ? await createHousehold(user, name)
+        : await joinHouseholdByCode(user, code);
+      const household = await getHousehold(householdId);
+      onDone(household);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="login-bg">
+      <div className="login-card" style={{ textAlign: "left" }}>
+        <h1 className="login-title" style={{ fontSize: 20 }}>Set up your household</h1>
+        <p className="login-sub" style={{ marginBottom: 20 }}>
+          A household is the shared budget — accounts, categories, and transactions everyone in it can see.
+        </p>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button
+            type="button"
+            className={mode === "create" ? "btn btn-primary" : "btn btn-ghost"}
+            style={{ flex: 1 }}
+            onClick={() => setMode("create")}
+          >
+            Create new
+          </button>
+          <button
+            type="button"
+            className={mode === "join" ? "btn btn-primary" : "btn btn-ghost"}
+            style={{ flex: 1 }}
+            onClick={() => setMode("join")}
+          >
+            Join existing
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          {mode === "create" ? (
+            <div className="form-group">
+              <label>Household name</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. The Morenos" />
+            </div>
+          ) : (
+            <div className="form-group">
+              <label>Invite code</label>
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="6-character code"
+                style={{ textTransform: "uppercase", letterSpacing: "0.1em" }}
+              />
+            </div>
+          )}
+          {error && <p className="login-error">{error}</p>}
+          <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: "100%", marginTop: 8 }}>
+            {mode === "create" ? "Create household" : "Join household"}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -67,9 +140,10 @@ class ErrorBoundary extends React.Component {
 }
 
 export default function App() {
-  const [user, setUser]       = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState("");
+  const [user, setUser]         = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [household, setHousehold] = useState(undefined); // undefined = not looked up yet, null = needs onboarding
+  const [error, setError]       = useState("");
 
   useEffect(() => {
     const stamp = () => localStorage.setItem(SESSION_KEY, Date.now().toString());
@@ -81,29 +155,32 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, async (u) => {
       try {
         if (u) {
-          if (ALLOWED_EMAILS.includes(u.email)) {
-            const lastActive = parseInt(localStorage.getItem(SESSION_KEY) || "0");
-            if (lastActive > 0 && Date.now() - lastActive > SESSION_MAX) {
-              localStorage.removeItem(SESSION_KEY);
-              await signOut(auth);
-              setError("Session expired. Please sign in again.");
-              setUser(null); setLoading(false); return;
-            }
-            localStorage.setItem(SESSION_KEY, Date.now().toString());
-            try {
-              await setDoc(doc(db, "users", u.uid), {
-                name: u.displayName, email: u.email, photo: u.photoURL,
-                lastLogin: new Date().toISOString()
-              }, { merge: true });
-            } catch(e) { console.warn("User doc:", e.message); }
-            setUser(u);
-          } else {
+          const lastActive = parseInt(localStorage.getItem(SESSION_KEY) || "0");
+          if (lastActive > 0 && Date.now() - lastActive > SESSION_MAX) {
+            localStorage.removeItem(SESSION_KEY);
             await signOut(auth);
-            setError("Access restricted to family members only.");
-            setUser(null);
+            setError("Session expired. Please sign in again.");
+            setUser(null); setHousehold(undefined); setLoading(false); return;
+          }
+          localStorage.setItem(SESSION_KEY, Date.now().toString());
+          try {
+            await setDoc(doc(db, "users", u.uid), {
+              name: u.displayName, email: u.email, photo: u.photoURL,
+              lastLogin: new Date().toISOString()
+            }, { merge: true });
+          } catch(e) { console.warn("User doc:", e.message); }
+          setUser(u);
+
+          const householdId = await getUserHouseholdId(u.uid);
+          if (householdId) {
+            const hh = await getHousehold(householdId);
+            setHousehold(hh);
+          } else {
+            setHousehold(null); // triggers onboarding
           }
         } else {
           setUser(null);
+          setHousehold(undefined);
         }
       } catch(e) {
         setError("Auth error: " + e.message);
@@ -134,14 +211,29 @@ export default function App() {
     </div>
   );
 
+  if (!user) return <LoginScreen onLogin={login} error={error} />;
+
+  if (household === null) {
+    return <HouseholdOnboarding user={user} onDone={setHousehold} />;
+  }
+
+  if (household === undefined) {
+    // Still resolving which household this user belongs to.
+    return (
+      <div className="login-bg">
+        <div style={{color:"var(--text2)",fontSize:14}}>Loading your household…</div>
+      </div>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <AuthContext.Provider value={{
         user,
-        household: { id: "casa", name: "Casa Budget", code: "FAMILY" },
+        household,
         signOut: () => signOut(auth)
       }}>
-        {user ? <Dashboard householdId="casa" /> : <LoginScreen onLogin={login} error={error} />}
+        <Dashboard householdId={household.id} />
       </AuthContext.Provider>
     </ErrorBoundary>
   );
