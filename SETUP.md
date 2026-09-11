@@ -85,15 +85,23 @@ app, so a few things carry over or need a look:
   make sure `presupuestosuchos.com` is listed (separate from whatever was
   configured there for the other app's domain). Google sign-in should
   already be enabled from the other app's setup.
+- **Email/Password provider needs enabling — required, not optional.**
+  Authentication → Sign-in method → enable **Email/Password**. Without
+  this, every email/password sign-up or sign-in attempt fails with
+  `auth/operation-not-allowed`, even though the app's own code is correct.
 - **`users/{uid}` is intentionally shared** between both apps, gated by
   self-access only (no email restriction) — a new public user needs to be
   able to write their own profile doc regardless of which app they're
   using.
 - No composite indexes needed — every query here is a single
   `where("householdId", "==", ...)`.
-- **Only Google sign-in is wired up.** "Other sources" would mean adding
-  providers like email/password or Apple — not done here. Say the word if
-  you want that.
+- **Email/password and Google are now both wired up.** Sign in / Create
+  account / Forgot password all work via `src/App.js`'s `LoginScreen`. One
+  known limitation: if the same email signs up with Google first and later
+  tries email/password (or vice versa), Firebase treats that as
+  `auth/email-already-in-use` rather than linking the two — the error
+  message nudges them to try the other method, but true account linking
+  isn't implemented.
 
 ## SimpleFIN: real, working, but with real gaps
 

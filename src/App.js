@@ -1,6 +1,14 @@
 import React, { useState, useEffect, createContext, useContext } from "react";
 import { auth, googleProvider, db } from "./firebase";
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import {
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { createHousehold, joinHouseholdByCode, getUserHouseholdId, getHousehold } from "./households";
 import Dashboard from "./pages/Dashboard";
@@ -12,7 +20,67 @@ export const useAuth = () => useContext(AuthContext);
 const SESSION_KEY = "casaBudget_lastActive";
 const SESSION_MAX = 24 * 60 * 60 * 1000;
 
-function LoginScreen({ onLogin, error }) {
+// Firebase's own error codes, translated into something a person can act on.
+function friendlyAuthError(e) {
+  switch (e.code) {
+    case "auth/email-already-in-use":
+      return "An account with this email already exists — try signing in instead. If you originally signed up with Google, use the Google button below.";
+    case "auth/weak-password":
+      return "Password must be at least 6 characters.";
+    case "auth/invalid-email":
+      return "That doesn't look like a valid email address.";
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+    case "auth/invalid-credential":
+      return "Incorrect email or password.";
+    case "auth/popup-closed-by-user":
+      return null; // not a real error, just dismiss silently
+    case "auth/unauthorized-domain":
+      return "Add this domain in Firebase Auth → Authorized domains.";
+    default:
+      return e.message;
+  }
+}
+
+function LoginScreen({ onGoogleLogin, error, setError }) {
+  const [mode, setMode] = useState("signin"); // "signin" | "signup"
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+
+  const handleEmailAuth = async (e) => {
+    e.preventDefault();
+    setError(""); setResetSent(false); setBusy(true);
+    try {
+      if (mode === "signup") {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        if (name.trim()) await updateProfile(cred.user, { displayName: name.trim() });
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+      // onAuthStateChanged (in App) picks up from here either way.
+    } catch (err) {
+      setError(friendlyAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) { setError("Enter your email above first, then tap 'Forgot password?'."); return; }
+    setError(""); setBusy(true);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setResetSent(true);
+    } catch (err) {
+      setError(friendlyAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="login-bg">
       <div className="login-card">
@@ -25,8 +93,63 @@ function LoginScreen({ onLogin, error }) {
         </div>
         <h1 className="login-title">Casa Budget</h1>
         <p className="login-sub">Household finances, together</p>
-        {error && <p className="login-error">{error}</p>}
-        <button className="google-btn" onClick={onLogin}>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button
+            type="button"
+            className={mode === "signin" ? "btn btn-primary" : "btn btn-ghost"}
+            style={{ flex: 1 }}
+            onClick={() => { setMode("signin"); setError(""); setResetSent(false); }}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            className={mode === "signup" ? "btn btn-primary" : "btn btn-ghost"}
+            style={{ flex: 1 }}
+            onClick={() => { setMode("signup"); setError(""); setResetSent(false); }}
+          >
+            Create account
+          </button>
+        </div>
+
+        <form onSubmit={handleEmailAuth} style={{ textAlign: "left" }}>
+          {mode === "signup" && (
+            <div className="form-group">
+              <label>Name</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+            </div>
+          )}
+          <div className="form-group">
+            <label>Email</label>
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+          </div>
+          <div className="form-group">
+            <label>Password</label>
+            <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" />
+          </div>
+
+          {resetSent && <p style={{ color: "var(--gold)", fontSize: 13, marginBottom: 12 }}>Password reset email sent — check your inbox.</p>}
+          {error && <p className="login-error">{error}</p>}
+
+          <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: "100%", marginBottom: 8 }}>
+            {mode === "signup" ? "Create account" : "Sign in"}
+          </button>
+
+          {mode === "signin" && (
+            <button type="button" onClick={handleForgotPassword} disabled={busy} className="btn btn-ghost" style={{ width: "100%", fontSize: 12 }}>
+              Forgot password?
+            </button>
+          )}
+        </form>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0", color: "var(--text3)", fontSize: 12 }}>
+          <div style={{ flex: 1, height: 1, background: "var(--border2)" }} />
+          or
+          <div style={{ flex: 1, height: 1, background: "var(--border2)" }} />
+        </div>
+
+        <button className="google-btn" onClick={onGoogleLogin}>
           <svg width="18" height="18" viewBox="0 0 18 18">
             <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/>
             <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/>
@@ -195,10 +318,8 @@ export default function App() {
     setError("");
     try { await signInWithPopup(auth, googleProvider); }
     catch(e) {
-      if (e.code === "auth/popup-closed-by-user") return;
-      setError(e.code === "auth/unauthorized-domain"
-        ? "Add this domain in Firebase Auth → Authorized domains."
-        : "Sign-in failed: " + e.message);
+      const msg = friendlyAuthError(e);
+      if (msg) setError(msg);
     }
   };
 
@@ -211,7 +332,7 @@ export default function App() {
     </div>
   );
 
-  if (!user) return <LoginScreen onLogin={login} error={error} />;
+  if (!user) return <LoginScreen onGoogleLogin={login} error={error} setError={setError} />;
 
   if (household === null) {
     return <HouseholdOnboarding user={user} onDone={setHousehold} />;
