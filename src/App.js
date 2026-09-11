@@ -142,7 +142,7 @@ class ErrorBoundary extends React.Component {
 export default function App() {
   const [user, setUser]         = useState(null);
   const [loading, setLoading]   = useState(true);
-  const [household, setHousehold] = useState(undefined); // undefined = not looked up yet, null = needs onboarding
+  const [household, setHousehold] = useState(undefined);
   const [error, setError]       = useState("");
 
   useEffect(() => {
@@ -176,7 +176,7 @@ export default function App() {
             const hh = await getHousehold(householdId);
             setHousehold(hh);
           } else {
-            setHousehold(null); // triggers onboarding
+            setHousehold(null);
           }
         } else {
           setUser(null);
@@ -218,7 +218,6 @@ export default function App() {
   }
 
   if (household === undefined) {
-    // Still resolving which household this user belongs to.
     return (
       <div className="login-bg">
         <div style={{color:"var(--text2)",fontSize:14}}>Loading your household…</div>

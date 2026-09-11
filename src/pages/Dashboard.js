@@ -2973,32 +2973,57 @@ function HowToPage({ household }) {
         <div>
           <div className="card" style={{ marginBottom:16 }}>
             <Section emoji="🚀" title="Getting started">
-              <Step n="1" text="Go to Categories first. This is where you create your income sources and expense categories (e.g. Salary, Rent, Groceries). Categories are just labels — no amounts here." />
+              <Step n="1" text="Go to Categories first. This is where you create your income sources and expense categories (e.g. Salary, Rent, Groceries) — categories are just labels, no amounts yet. Group related ones together (Housing, Food, Income, etc.) to keep a long list organized." />
               <Step n="2" text="Then go to the Budget tab. This is where you set your monthly targets — how much income you expect and how much you plan to spend per category. Click 'Set Budget' to enter your plan for the month." />
               <Step n="3" text="Log transactions using the + button as you receive income or spend money. Pick the matching category so it feeds your budget execution automatically." />
-              <Step n="4" text="Check Overview anytime for a quick snapshot of budget execution. Go to the Budget tab for the full detailed breakdown." />
+              <Step n="4" text="Check Overview anytime for a quick snapshot of budget execution. Go to the Budget tab for the full detailed breakdown, category by category." />
+              <Tip text="Accounts (Checking, Credit Card, Cash, etc.) are optional, not required to log a transaction — set them up in Accounts if you want to track balances per account, e.g. to see what's sitting in savings versus what's on a credit card." />
             </Section>
           </div>
 
           <div className="card" style={{ marginBottom:16 }}>
             <Section emoji="🏡" title="Sharing with a partner">
-              <Step n="1" text="Share your 6-character household code (shown above) with your partner." />
-              <Step n="2" text="They sign in with their Google account, choose 'Join an existing household', and enter your code." />
-              <Step n="3" text="You'll both see the same transactions, budget, goals, and bills in real time." />
-              <Tip text="Going solo? No problem — just use it yourself and ignore the sharing feature." />
+              <Step n="1" text="Your 6-character household code is shown above — tap it to copy." />
+              <Step n="2" text="Share it with your partner however you'd normally send them a short code (text, chat, in person)." />
+              <Step n="3" text="They sign in with their own Google account. The first time, they'll be asked to set up a household — they should choose 'Join existing' and paste in your code, rather than 'Create new'." />
+              <Step n="4" text="Once joined, you'll both see the same accounts, transactions, budget, goals, and bills in real time — there's no separate 'your data' and 'their data' inside one household." />
+              <Tip text="Going solo? No problem — just use it yourself and ignore the sharing feature. Nothing about the app requires a second person." />
+              <Tip text="Anyone with the code can join, so treat it a little like a shared password — share it directly with the person you want in your household, not somewhere public." />
             </Section>
           </div>
 
           <div className="card">
-            <Section emoji="🎯" title="Savings Goals">
-              <Step n="1" text="Go to Savings Goals and create a goal — name it, set a target amount, and optionally a deadline." />
-              <Step n="2" text="Update the 'saved' amount manually as you put money aside." />
-              <Tip text="Tip: create a Savings category in your budget and log transfers there as transactions to track savings as part of your monthly execution." />
+            <Section emoji="🏦" title="Bank sync & importing transactions">
+              <div style={{ fontSize:13, color:"var(--text2)", lineHeight:1.7, marginBottom:14 }}>
+                There are three separate ways to get transactions in — worth knowing which is which:
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
+                {[
+                  { label:"⚡ Sync Bank", desc:"Live connection via SimpleFIN — pulls transactions directly from your bank. Requires a SimpleFIN setup token (a small monthly cost, separate from this app, paid to SimpleFIN) and your bank credentials, which go to SimpleFIN, never to Casa Budget." },
+                  { label:"🏦 Bank Import", desc:"Upload a CSV statement exported from your bank (Capital One's format is explicitly supported) for a one-time import — no ongoing connection or token needed." },
+                  { label:"App CSV", desc:"Round-trips this app's own export format — useful for restoring or moving data, not for importing a raw bank statement." },
+                ].map(({label,desc}) => (
+                  <div key={label} style={{ display:"flex", flexDirection:"column", gap:2 }}>
+                    <div style={{ fontSize:13, fontWeight:500, color:"var(--text)" }}>{label}</div>
+                    <div style={{ fontSize:12, color:"var(--text3)", lineHeight:1.5 }}>{desc}</div>
+                  </div>
+                ))}
+              </div>
+              <Tip text="After any import, skim the reviewed list before confirming — it's the easiest moment to catch a transaction that shouldn't be there, especially if you've synced the same date range more than once." />
             </Section>
           </div>
         </div>
 
         <div>
+          <div className="card" style={{ marginBottom:16 }}>
+            <Section emoji="🎯" title="Savings Goals">
+              <Step n="1" text="Go to Savings Goals and create a goal — name it, pick an icon, set a target amount, and optionally a target date." />
+              <Step n="2" text="Update the 'saved' amount manually as you put money aside — there's no automatic link between a transaction and a goal's progress." />
+              <Step n="3" text="Edit a goal any time to adjust the target, the saved amount, or the date as plans change." />
+              <Tip text="Create a Savings category in your budget and log transfers there as transactions, so setting money aside also shows up as part of your monthly execution, not just inside the goal itself." />
+            </Section>
+          </div>
+
           <div className="card" style={{ marginBottom:16 }}>
             <Section emoji="📊" title="Understanding Budget Execution">
               <div style={{ fontSize:13, color:"var(--text2)", lineHeight:1.7, marginBottom:14 }}>
@@ -3019,16 +3044,21 @@ function HowToPage({ household }) {
                   </div>
                 ))}
               </div>
-              <Tip text="Traffic lights: green = on track, yellow = 80%+ used (warning), red = over budget." />
+              <div style={{ fontSize:12, color:"var(--text3)", lineHeight:1.6, marginBottom:14, background:"var(--surface2)", borderRadius:8, padding:"10px 12px" }}>
+                Worked example: budgeted income $5,000, actual $5,000 → 100% fulfillment. Budgeted expenses $4,000, actual $3,200 → 80% execution (green, under budget). Savings rate = ($5,000 − $3,200) ÷ $5,000 = 36%.
+              </div>
+              <Tip text="Traffic lights: green = on track, yellow = 80%+ used (warning), red = over budget. These apply per category as well as to the overall totals." />
+              <Tip text="Overview gives you the same three numbers at a glance; the Budget tab breaks them down category by category." />
             </Section>
           </div>
 
           <div className="card" style={{ marginBottom:16 }}>
             <Section emoji="💳" title="Shared Bills">
-              <Step n="1" text="Add a shared bill (e.g. rent, Netflix) with the total and split type." />
-              <Step n="2" text="Choose 50/50 to split equally, or 'Full' if one person pays entirely." />
-              <Step n="3" text="Mark bills as Settled once paid. Reopen them if needed." />
-              <Tip text="The owed total at the top shows how much each person owes across all unsettled 50/50 bills." />
+              <Step n="1" text="Add a shared bill (e.g. rent, Netflix) with the total amount, who paid it, and a due date." />
+              <Step n="2" text="Choose 50/50 to split it equally between the household, or 'Full' if one person is covering the whole thing (still logged, just not split)." />
+              <Step n="3" text="Mark bills as Settled once the split has actually been paid back. Reopen a bill if that turns out to be premature." />
+              <Tip text="The owed total at the top adds up every unsettled 50/50 bill — it's a running tally of who owes whom, not a single bill's detail." />
+              <Tip text="Bills here are one-off entries, not automatically recurring — for a monthly bill like rent, add a new entry each month rather than expecting last month's to reappear." />
             </Section>
           </div>
 
@@ -3038,7 +3068,8 @@ function HowToPage({ household }) {
               <Tip text="Log transactions as they happen, not at the end of the month, for the most accurate picture." />
               <Tip text="Use the Analytics page at year-end to review your full year of cashflow." />
               <Tip text="Download CSV from Transactions anytime to import into Excel or your accountant's tools." />
-              <Tip text="Create custom categories in Categories for anything not covered by the defaults." />
+              <Tip text="Create custom categories in Categories for anything not covered by the defaults, and group related ones together." />
+              <Tip text="If you use Sync Bank, review the imported list each time before confirming — it's the simplest way to catch anything that looks off." />
             </Section>
           </div>
         </div>
