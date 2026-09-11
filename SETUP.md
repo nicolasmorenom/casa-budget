@@ -143,3 +143,18 @@ none of which I touched in this pass:
   function instead, same pattern `simplefin-proxy.js` already uses.
 
 Say the word if you want any of the above fixed.
+
+## Recent changes
+
+- **Removed the Quick Log Chat feature entirely.** It called
+  `api.anthropic.com` directly from the browser with no API key present —
+  the same architectural problem as the SimpleFIN/Bank Import
+  AI-categorization noted above, just as a standalone chat UI rather than
+  an import step. That AI-categorization step (in `SimplefinModal` and
+  `BankImportModal`) is unrelated and still there — only the chat feature
+  was removed.
+- **Household members are now visible**, not just a count. The "Your
+  Household" card on the How to Use page lists every member's email (with
+  "(you)" next to your own), and the sidebar's household chip shows the
+  count with the full list in a hover tooltip.
+

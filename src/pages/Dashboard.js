@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
 import {
   collection, addDoc, deleteDoc, doc, onSnapshot,
@@ -2912,6 +2912,7 @@ function AnalyticsPage({ transactions, categories }) {
 
 // ─── PAGE: HOW TO USE ────────────────────────────────────────────────────────
 function HowToPage({ household }) {
+  const { user } = useAuth();
   const [copied, setCopied] = useState(false);
   const copy = () => {
     if (household?.code) { navigator.clipboard.writeText(household.code); setCopied(true); setTimeout(()=>setCopied(false),2000); }
@@ -2966,6 +2967,28 @@ function HowToPage({ household }) {
               </div>
             </div>
           </div>
+
+          {household.memberEmails?.length > 0 && (
+            <div style={{ marginTop:16, paddingTop:16, borderTop:"1px solid var(--border2)" }}>
+              <div style={{ fontSize:11, color:"var(--text3)", marginBottom:8, textTransform:"uppercase", letterSpacing:"0.06em" }}>
+                Who's in this household
+              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {household.memberEmails.map((email) => (
+                  <div
+                    key={email}
+                    style={{ display:"flex", alignItems:"center", gap:6, background:"var(--surface2)", borderRadius:20, padding:"6px 12px", fontSize:12 }}
+                  >
+                    <div style={{ width:20, height:20, borderRadius:"50%", background:"var(--gold-dim)", color:"var(--gold)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:600, flexShrink:0 }}>
+                      {email.charAt(0).toUpperCase()}
+                    </div>
+                    <span style={{ color:"var(--text2)" }}>{email}</span>
+                    {email === user?.email && <span style={{ color:"var(--gold)", fontWeight:500 }}>(you)</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -3518,307 +3541,6 @@ const NAV = [
   { id: "howto",        label: "How to Use",    icon: "help"   },
 ];
 
-
-// ─── QUICK LOG CHAT ───────────────────────────────────────────────────────────
-function QuickLogChat({ categories, transactions, householdId, onSave, onAddCategory, user }) {
-  const [open, setOpen]       = useState(false);
-  const [input, setInput]     = useState("");
-  const [loading, setLoading] = useState(false);
-  const [parsed, setParsed]   = useState(null);   // AI result
-  const [msg, setMsg]         = useState(null);    // feedback message
-  const [askCreate, setAskCreate] = useState(null); // { label, type, suggestedIcon, suggestedColor }
-  const inputRef = useRef(null);
-
-  // Budget plan for this month (to show remaining)
-  const now = new Date();
-  const monthKey = `${householdId}_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-  const [plan, setPlan] = useState({});
-  useEffect(() => {
-    if (!householdId) return;
-    const ref = doc(db, "budgetPlans", monthKey);
-    const unsub = onSnapshot(ref, snap => setPlan(snap.exists() ? snap.data() : {}));
-    return unsub;
-  }, [monthKey, householdId]);
-
-  // Actuals for this month per category
-  const monthTx = transactions.filter(t => {
-    const d = new Date(t.date);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  });
-  const actualMap = {};
-  monthTx.forEach(t => { actualMap[t.categoryId] = (actualMap[t.categoryId] || 0) + t.amount; });
-
-  useEffect(() => {
-    if (open && inputRef.current) inputRef.current.focus();
-  }, [open]);
-
-  const reset = () => { setParsed(null); setMsg(null); setAskCreate(null); setInput(""); };
-
-  const parseWithAI = async (text) => {
-    setLoading(true); setParsed(null); setMsg(null); setAskCreate(null);
-    try {
-      const catList = categories.map(c => `${c.label} (${c.type}, id:${c.id})`).join(", ");
-      const today   = new Date().toISOString().slice(0, 10);
-      const userName = user?.displayName?.split(" ")[0] || "me";
-
-      const prompt = `You are a transaction parser for a family budget app. Parse this input and return ONLY valid JSON, no explanation.
-
-User input: "${text}"
-Today: ${today}
-User first name: ${userName}
-Available categories: ${catList}
-
-Rules:
-- amount: positive number (required)
-- type: "income" or "expense" — infer from context (salary/paycheck/received = income, everything else = expense)  
-- categoryId: pick the best matching id from the list above, or null if none fits
-- categoryLabel: the label of matched category, or your best guess label if no match
-- description: clean short description (capitalize first letter)
-- date: YYYY-MM-DD (default today if not mentioned, "yesterday" = ${new Date(Date.now()-86400000).toISOString().slice(0,10)})
-- paidBy: person name if mentioned, otherwise "${userName}"
-- confidence: 0-1 how confident you are in the category match
-
-Return JSON like:
-{"amount":6.00,"type":"expense","categoryId":"d_coffee","categoryLabel":"Coffee Shops","description":"Coffee","date":"${today}","paidBy":"${userName}","confidence":0.95}`;
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 200,
-          messages: [{ role: "user", content: prompt }]
-        })
-      });
-      const data = await res.json();
-      const raw  = data.content?.[0]?.text?.trim() || "";
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON");
-      const result = JSON.parse(jsonMatch[0]);
-
-      // Find the actual category object
-      const cat = result.categoryId ? categories.find(c => c.id === result.categoryId) : null;
-      result.category = cat || null;
-
-      // If no match or low confidence, flag for user
-      if (!cat) {
-        result.noMatch = true;
-      }
-      setParsed(result);
-    } catch(e) {
-      setMsg({ type:"error", text:"Couldn't understand that. Try: 'coffee 6' or 'salary 5000'" });
-    }
-    setLoading(false);
-  };
-
-  const handleSend = () => {
-    const t = input.trim();
-    if (!t) return;
-    parseWithAI(t);
-  };
-
-  const handleConfirm = async () => {
-    if (!parsed) return;
-    const cat = parsed.category;
-    await onSave({
-      type:          parsed.type,
-      categoryId:    cat?.id || "",
-      categoryLabel: cat?.label || parsed.categoryLabel || "Uncategorized",
-      categoryIcon:  cat?.icon  || "📦",
-      categoryColor: cat?.color || "#888",
-      description:   parsed.description,
-      amount:        parsed.amount,
-      date:          parsed.date,
-      paidBy:        parsed.paidBy,
-    });
-
-    // Build feedback message with budget remaining
-    let feedback = `✅ Logged: ${cat?.icon || "📦"} ${parsed.description} — $${parsed.amount}`;
-    if (cat && cat.type === "expense") {
-      const budget  = plan[cat.id] || 0;
-      const spent   = (actualMap[cat.id] || 0) + parsed.amount;
-      if (budget > 0) {
-        const remaining = budget - spent;
-        if (remaining > 0) {
-          feedback += `\n💡 You have $${remaining.toFixed(0)} remaining in ${cat.label} this month.`;
-        } else {
-          feedback += `\n⚠️ You're $${Math.abs(remaining).toFixed(0)} over budget for ${cat.label} this month.`;
-        }
-      } else {
-        feedback += `\n💡 No budget set for ${cat.label} — add one in the Budget tab.`;
-      }
-    }
-    setMsg({ type:"success", text: feedback });
-    setParsed(null);
-    setInput("");
-  };
-
-  const handleCreateCategory = async () => {
-    if (!askCreate || !parsed) return;
-    const newCat = {
-      label: askCreate.label,
-      type:  parsed.type,
-      icon:  askCreate.icon  || (parsed.type === "income" ? "💰" : "📦"),
-      color: askCreate.color || (parsed.type === "income" ? "#1e9e6b" : "#d94f4f"),
-    };
-    await onAddCategory(newCat);
-    // Re-fetch category (it'll appear via snapshot), then confirm
-    setMsg({ type:"info", text:`📁 Category "${askCreate.label}" created! Tap ✓ to log the transaction.` });
-    setAskCreate(null);
-    // Update parsed to reflect new category will be created
-    setParsed(p => ({ ...p, categoryLabel: askCreate.label, noMatch: false }));
-  };
-
-  const fmt = (n) => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
-  const today = new Date().toISOString().slice(0,10);
-  const dateLabel = parsed?.date === today ? "Today"
-    : parsed?.date === new Date(Date.now()-86400000).toISOString().slice(0,10) ? "Yesterday"
-    : parsed?.date || "";
-
-  return (
-    <>
-      {/* Floating bubble */}
-      <button className="chat-bubble" onClick={() => { setOpen(o=>!o); reset(); }}>
-        {open ? <Icon name="x" size={22}/> : <Icon name="chat" size={22}/>}
-      </button>
-
-      {/* Chat panel */}
-      {open && (
-        <div className="chat-panel">
-          <div className="chat-header">
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{color:"var(--gold)"}}><Icon name="sparkle" size={14}/></span>
-              <span style={{fontSize:13,fontWeight:600}}>Quick Log</span>
-            </div>
-            <span style={{fontSize:11,color:"var(--text3)"}}>Type anything — I'll parse it</span>
-          </div>
-
-          <div className="chat-body">
-            {/* Examples when idle */}
-            {!parsed && !msg && !loading && (
-              <div className="chat-examples">
-                {["coffee 6","salary 5000","uber 12.50 yesterday","groceries 87 natalia"].map(ex => (
-                  <button key={ex} className="chat-example-pill"
-                    onClick={() => { setInput(ex); parseWithAI(ex); }}>
-                    {ex}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Loading */}
-            {loading && (
-              <div className="chat-thinking">
-                <div className="chat-dots"><span/><span/><span/></div>
-                <span>Parsing...</span>
-              </div>
-            )}
-
-            {/* Parsed result confirmation */}
-            {parsed && !loading && (
-              <div className="chat-result">
-                {/* Category */}
-                <div className="chat-result-cat" style={{borderColor: parsed.category?.color || "var(--border2)"}}>
-                  <span style={{fontSize:22}}>{parsed.category?.icon || "📦"}</span>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600,color:parsed.category?.color||"var(--text)"}}>
-                      {parsed.category?.label || parsed.categoryLabel}
-                    </div>
-                    <div style={{fontSize:11,color:"var(--text3)"}}>
-                      {parsed.type === "income" ? "Income" : "Expense"} · {dateLabel} · {parsed.paidBy}
-                    </div>
-                  </div>
-                  <div style={{marginLeft:"auto",fontSize:18,fontWeight:700,color:parsed.type==="income"?"var(--green)":"var(--red)"}}>
-                    {parsed.type==="income"?"+":"-"}{fmt(parsed.amount)}
-                  </div>
-                </div>
-
-                {/* No category match warning */}
-                {parsed.noMatch && (
-                  <div className="chat-no-match">
-                    <div style={{fontSize:12,color:"var(--amber)",marginBottom:8}}>
-                      ⚠ No matching category for "<strong>{parsed.categoryLabel}</strong>"
-                    </div>
-                    {!askCreate ? (
-                      <div style={{display:"flex",gap:6}}>
-                        <button className="btn btn-primary btn-sm"
-                          onClick={() => setAskCreate({ label: parsed.categoryLabel, icon: parsed.type==="income"?"💰":"📦", color: parsed.type==="income"?"#1e9e6b":"#d94f4f" })}>
-                          + Create category
-                        </button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setParsed(p=>({...p,noMatch:false,category:null}))}>
-                          Log anyway
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                        <span style={{fontSize:12,color:"var(--text2)"}}>Create "{askCreate.label}"?</span>
-                        <button className="btn btn-primary btn-sm" onClick={handleCreateCategory}>Yes, create</button>
-                        <button className="btn btn-ghost btn-sm" onClick={()=>setAskCreate(null)}>Cancel</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Budget context preview */}
-                {parsed.category && parsed.type === "expense" && (() => {
-                  const budget  = plan[parsed.category.id] || 0;
-                  const spent   = actualMap[parsed.category.id] || 0;
-                  const remaining = budget - spent - parsed.amount;
-                  if (budget === 0) return null;
-                  return (
-                    <div className="chat-budget-hint" style={{borderColor: remaining>=0?"var(--green)":"var(--red)"}}>
-                      <span style={{fontSize:11,color:"var(--text3)"}}>After logging:</span>
-                      <span style={{fontSize:12,fontWeight:600,color:remaining>=0?"var(--green)":"var(--red)"}}>
-                        {remaining>=0 ? `$${remaining.toFixed(0)} left` : `$${Math.abs(remaining).toFixed(0)} over`} in {parsed.category.label}
-                      </span>
-                    </div>
-                  );
-                })()}
-
-                {/* Confirm / Cancel */}
-                <div style={{display:"flex",gap:8,marginTop:10}}>
-                  <button className="btn btn-primary" style={{flex:1}} onClick={handleConfirm}>
-                    ✓ Log it
-                  </button>
-                  <button className="btn btn-ghost" onClick={reset}>
-                    ✕
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Success / error message */}
-            {msg && !parsed && (
-              <div className={`chat-msg chat-msg-${msg.type}`}>
-                <div style={{whiteSpace:"pre-line",fontSize:13}}>{msg.text}</div>
-                <button className="btn btn-ghost btn-sm" style={{marginTop:8,width:"100%"}} onClick={reset}>
-                  Log another
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Input row */}
-          <div className="chat-input-row">
-            <input
-              ref={inputRef}
-              className="chat-input"
-              placeholder="coffee 6, salary 5000, uber 12..."
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && input.trim()) handleSend(); }}
-              disabled={loading}
-            />
-            <button className="chat-send-btn" onClick={handleSend} disabled={!input.trim() || loading}>
-              <Icon name="send" size={16}/>
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
 export default function Dashboard({ householdId }) {
   const { user, household, signOut } = useAuth();
   const [page, setPage]             = useState("overview");
@@ -4071,6 +3793,12 @@ export default function Dashboard({ householdId }) {
                 title="Click to copy">
                 {household.code}
               </span></div>
+              <div
+                style={{ fontSize:11, color:"var(--text3)", marginTop:2, cursor:"default" }}
+                title={household.memberEmails?.join(", ") || ""}
+              >
+                {household.memberEmails?.length || 1} member{(household.memberEmails?.length||1)>1?"s":""} · see How to Use for the full list
+              </div>
             </div>
           )}
           <div className="user-chip">
@@ -4099,15 +3827,6 @@ export default function Dashboard({ householdId }) {
 
       {showTxModal   && <TxModal  onClose={()=>setShowTxModal(false)}  onSave={addTx}  user={user} categories={categories} accounts={accounts}/>}
       {showGoalModal && <GoalModal goal={null} onClose={()=>setShowGoalModal(false)} onSave={(data)=>saveGoal(null,data)}/>}
-
-      <QuickLogChat
-        categories={categories}
-        transactions={transactions}
-        householdId={householdId}
-        onSave={addTx}
-        onAddCategory={addCategory}
-        user={user}
-      />
     </div>
   );
 }
